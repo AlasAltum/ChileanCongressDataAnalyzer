@@ -485,15 +485,13 @@ def main():
     has been collected, save a .csv file with this data
 
     """
-    # init web driver
     driver = get_driver()
     webdriver = DeputyWebDriver(driver)
     deputies_names, _ = webdriver.get_deputies_names_from_dropdown()
     deputies_collected_data  = set()
 
-    # # Do this for every deputy, since we know all the names
-    # # We know we should have data for every deputy    
-    # ElementClickInterceptedException
+    # Do this for every deputy, since we know all the names
+    # We know we should have data for every deputy    
     while len(deputies_collected_data) < len(deputies_names):
         webdriver._handle_select_to_change_deputy(len(deputies_collected_data))
         current_deputy_name = webdriver.get_deputy_name()
@@ -538,29 +536,22 @@ if __name__ == "__main__":
         main()
 
         operational_costs_df = pd.DataFrame.from_dict(operational_costs)
-        operational_costs_df.to_csv('collected_data/CostosOperacionales.csv')
-
-        monto_to_int = lambda x: int(re.sub(r'[$.\s]', '', x))
-        external_consultancies['Monto'] = [monto_to_int(monto) for monto in  external_consultancies['Monto']] 
-        external_consultancies_df = pd.DataFrame.from_dict(external_consultancies)
-        external_consultancies_df.to_csv('collected_data/ConsultoriasExternas.csv')
+        operational_costs_df.to_csv('collected_data/CostosOperacionales.csv', index=False)
 
         # change format of text to avoid int truncation
         # if we not apply this, values like: 
-        #  '822.400   ' will be passed as 822.4
-        str_to_int = lambda x: int(re.sub(r'[.\s]', '', x))
-        support_staff['Sueldo'] = [str_to_int(num) for num in support_staff['Sueldo']]
+        #  '$822.400   ' will be passed as 822.4
+        monto_to_int = lambda x: int(re.sub(r'[$.\s]', '', x))
+        external_consultancies['Monto'] = [monto_to_int(monto) for monto in  external_consultancies['Monto']] 
+        external_consultancies_df = pd.DataFrame.from_dict(external_consultancies)
+        external_consultancies_df.to_csv('collected_data/ConsultoriasExternas.csv', index=False)
+
+        support_staff['Sueldo'] = [monto_to_int(num) for num in support_staff['Sueldo']]
         # Export collected data to a csv file
         support_staff_df = pd.DataFrame.from_dict(support_staff)
-        support_staff_df.to_csv('collected_data/SupportStaff.csv')
+        support_staff_df.to_csv('collected_data/SupportStaff.csv', index=False)
 
     except NoSuchWindowException:
         print('Se cerró el navegador')
         raise
-
-# 
-# Examples:
-# Diputado Bernardo Berger Fett
-# Asesorías Externas: BONNIE MARQUEZ JEREZ Año 2018
-# Personal de apoyo: Márquez Jerez Bonnie Cindy
 
