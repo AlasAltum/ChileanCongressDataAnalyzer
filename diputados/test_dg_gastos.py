@@ -427,7 +427,7 @@ class YearStepTest(unittest.TestCase):
              mock.patch.object(dg_gastos, 'DeputyWebDriver', return_value=scraper), \
              mock.patch.multiple(
                  scraper,
-                 get_deputies_names_from_dropdown=mock.Mock(return_value=(['Deputy'], None)),
+                 get_deputies_from_dropdown=mock.Mock(return_value=[('Deputy', '1008')]),
                  _handle_select_to_change_deputy=mock.Mock(),
                  get_deputy_name=mock.Mock(return_value='Deputy'),
                  get_into_operational_costs_section=mock.Mock(),
