@@ -522,9 +522,9 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
         reset_dates = scraper._reset_dates_for_another_section
         is_consultancies = iter((False, True, False))
 
-        def reset_dates_only_for_consultancies():
+        def reset_dates_only_for_consultancies(**options):
             if next(is_consultancies):
-                reset_dates()
+                reset_dates(**options)
             else:
                 scraper.there_is_more_data_to_scrap = False
 

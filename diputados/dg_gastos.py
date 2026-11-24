@@ -222,10 +222,14 @@ class DeputyWebDriver:
                 return False
 
         dropdown, years, selected_year = self.webdriver_wait.until(read_year)
-        if select_latest and selected_year != max(years):
-            Select(dropdown).select_by_visible_text(str(max(years)))
-            self._wait_for_postback(dropdown)
-            _, years, selected_year = self.webdriver_wait.until(read_year)
+        if select_latest:
+            latest_year = max(years)
+            if selected_year != latest_year:
+                Select(dropdown).select_by_visible_text(str(latest_year))
+                self._wait_for_postback(dropdown)
+                _, years, selected_year = self.webdriver_wait.until(read_year)
+                if selected_year != latest_year:
+                    raise ValueError(f'La página cargó el año {selected_year} en vez de {latest_year}')
         self.available_years, self.current_year = years, selected_year
         self._log(f'Año actual actualizado a: {self.current_year}')
 
