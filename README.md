@@ -24,16 +24,15 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-The notebook currently requires pandas 1.x. Keep the virtual environment active
-for the commands below.
+Keep the virtual environment active for the commands below.
 
 ## Run the scraper
 
 Install Firefox and run the scraper in a desktop session where Firefox can open
 a window. Selenium Manager can download geckodriver automatically; if it cannot
 download the driver, install a compatible geckodriver and put it on your
-`PATH`. Leave the `DRIVER` environment variable unset to use Firefox; browser
-overrides do not currently work.
+`PATH`. Leave the `DRIVER` environment variable unset to use Firefox, or set
+it to `chrome` to use an installed copy of Chrome.
 
 Start from the repository root. The scraper writes to `collected_data/`
 relative to its working directory:
@@ -44,10 +43,8 @@ cd diputados
 python dg_gastos.py
 ```
 
-A complete scrape can take several hours and overwrites the CSVs in
-`diputados/collected_data/`. The current scraper can stop at a
-`find_element_by_*` call because recent Selenium 4 releases removed those
-methods.
+A complete scrape can take several hours. The scraper overwrites the CSVs in
+`diputados/collected_data/` after it finishes collecting data.
 
 ## Run the analysis notebook
 
@@ -57,12 +54,11 @@ its own directory so it can read `../collected_data/`:
 
 ```sh
 cd diputados/analysis_results
-jupyter nbconvert --to notebook --execute --allow-errors analysis.ipynb --output analysis.executed.ipynb
+jupyter nbconvert --to notebook --execute analysis.ipynb --output analysis.executed.ipynb
 ```
 
-Open `analysis.executed.ipynb` to inspect the results. `--allow-errors` keeps
-the output from working cells and records errors from unfinished cells without
-overwriting the source notebook.
+Open `analysis.executed.ipynb` to inspect the results. The source notebook is
+not overwritten.
 
 ## Daily expense refresh
 
