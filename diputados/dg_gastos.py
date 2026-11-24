@@ -10,10 +10,8 @@ from selenium.webdriver import Remote as RemoteWebDriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
 from selenium.common.exceptions import (StaleElementReferenceException,
-                                        TimeoutException,
                                         NoSuchWindowException,
-                                        ElementClickInterceptedException,
-                                        NoSuchElementException)
+                                        ElementClickInterceptedException)
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from driver_utils import get_driver, _by_css_selector, _by_xpath_selector, _by_id
@@ -253,30 +251,21 @@ class DeputyWebDriver:
         return self.set_one_year_backward() and self._select_month(last=True)
 
     def _fast_check_if_there_is_data_section(self) -> bool:
-        """
-        Return True if the webdriver found the table, elsewise return False. 
-        If neither the table or text was found, use an implicit wait
-        """
-        try:
-            if self.driver.find_element(By.XPATH, DEPUTY_COST_TABLE_XPATH):
-                return True
-        except NoSuchElementException:
-            pass  # just ignore, maybe it is not ready or it won't find the element
-        try:
-            text_parragraph = self.driver.find_element(By.XPATH, NO_DATA_PARRAGRAPH_XPATH)
-            if text_parragraph and 'no han sido publicados' in text_parragraph.text:
-                return False
-        except NoSuchElementException:
-            pass  # same as before.
+        """Wait for the data table or the site's explicit no-data notice."""
+        def find_data_section(driver):
+            if driver.find_elements(By.XPATH, DEPUTY_COST_TABLE_XPATH):
+                return 'table'
+            notices = driver.find_elements(By.XPATH, NO_DATA_PARRAGRAPH_XPATH)
+            if any('no han sido publicados' in notice.text for notice in notices):
+                return 'no_data'
+            return None
 
-        # Maybe the page is still loading. Use implicit wait.
-        try:
-            table = self.webdriver_wait.until(_by_xpath_selector(DEPUTY_COST_TABLE_XPATH))
-            if table:
-                return True
-
-        except (NoSuchElementException, TimeoutException):
-            return False
+        section = self.webdriver_wait.until(
+            find_data_section,
+            f'No se encontró tabla ni aviso de datos no publicados para '
+            f'{self.current_deputy}, {MONTHS[self.current_month_index]} de {self.current_year}',
+        )
+        return section == 'table'
 
 
     def get_data_from_operational_costs_table(self) -> None:
@@ -314,11 +303,6 @@ class DeputyWebDriver:
 
                 self._log('Se agregaron datos de costos operacionales para el mes '
                           f'{MONTHS[self.current_month_index]} satisfactoriamente')
-
-        except TimeoutException:
-            # Elements not found
-            self._log(f'Mes {MONTHS[self.current_month_index]} del año '
-                  f'{self.current_year} no tiene datos. Saltando...')
 
         except StaleElementReferenceException:
             self.get_data_from_operational_costs_table()
@@ -358,6 +342,8 @@ class DeputyWebDriver:
                   f'{self.current_year} no tiene datos. Saltando...')
 
             if available_data:
+                if not self.driver.find_elements(By.XPATH, TABLE_ROW_XPATH):
+                    return
                 xpath_prefix = '//table[@class="tabla"]/tbody/tr/td'
                 # This first time is to make sure the data was loaded and
                 # there were no changes in the DOM
@@ -390,28 +376,17 @@ class DeputyWebDriver:
 
                 self._log('Se obtuvieron los datos de las asesorías externas para el año '
                           f'{self.current_year} y el mes {MONTHS[self.current_month_index]}')
-        except StaleElementReferenceException as e:
+        except StaleElementReferenceException:
             # This might happen when changes were made too fast
             self.get_data_from_external_consultancies()
-        
-        except Exception as e:
-            self._log('No se encontraron datos en asesorías externas'
-                    f'para el año {self.current_year}')
 
 
     def get_into_supporting_staff(self) -> bool:
-        """
-        Get into supporting staff element for the current deputy
-        If click was sucessfull, return True
-        Return False if error
-        """
-        try:
-            LIST_CSS = '#ContentPlaceHolder1_ContentPlaceHolder1_btpeapo'
-            supporting_staff_element = self.webdriver_wait.until(_by_css_selector(LIST_CSS))
-            supporting_staff_element.click()
-            return True
-        except (TimeoutException, NoSuchElementException):
-            return False
+        """Open the supporting staff section for the current deputy."""
+        LIST_CSS = '#ContentPlaceHolder1_ContentPlaceHolder1_btpeapo'
+        supporting_staff_element = self.webdriver_wait.until(_by_css_selector(LIST_CSS))
+        supporting_staff_element.click()
+        return True
 
 
     def get_data_from_support_staff(self):
@@ -462,11 +437,6 @@ class DeputyWebDriver:
 
         except StaleElementReferenceException:
             self.get_data_from_support_staff()  # Just reload
-
-        except Exception as e:
-            # Case Elements not found
-            self._log('No se encontraron datos en personal de apoyo para el mes de '
-                      f'{MONTHS[self.current_month_index]} en el año {self.current_year}')
 
     def _reset_dates_for_another_section(self):
         self.get_and_update_current_year()
