@@ -333,17 +333,16 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
         self.assertEqual((selected_month(), scraper.current_month_index), ('marzo', 3))
 
     def test_starts_previous_year_at_its_last_listed_month(self):
-        scraper = self.open_scraper_on(
+        pathlib.Path(self.pages_dir.name, 'year_2025.html').write_text(PAGE.format(content=(
             f'<select id="{dg_gastos.YEAR_SELECTOR_CSS[1:]}">'
+            '<option selected="selected">2025</option><option>2026</option></select>'
+            f'<select id="{dg_gastos.MONTH_SELECTOR_CSS[1:]}">'
+            '<option>febrero</option><option>octubre</option></select>')), encoding='utf-8')
+        scraper = self.open_scraper_on(
+            f'<select id="{dg_gastos.YEAR_SELECTOR_CSS[1:]}"'
+            ' onchange="location.href = \'year_2025.html\'">'
             '<option>2025</option><option selected="selected">2026</option></select>'
             f'<select id="{dg_gastos.MONTH_SELECTOR_CSS[1:]}"><option>marzo</option></select>')
-        self.driver.execute_script(
-            'const year = document.querySelector(arguments[0]);'
-            'const month = document.querySelector(arguments[1]);'
-            'year.addEventListener("change", () => {'
-            '    month.replaceChildren(new Option("febrero"), new Option("octubre"));'
-            '});',
-            dg_gastos.YEAR_SELECTOR_CSS, dg_gastos.MONTH_SELECTOR_CSS)
         scraper._reset_dates_for_another_section()
 
         self.assertTrue(scraper.set_one_month_backward())
@@ -371,6 +370,36 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
             self.assertFalse(scraper.set_one_month_backward())
         self.assertFalse(scraper.there_is_more_data_to_scrap)
         self.assertFalse(scraper.set_one_month_backward())
+
+    def test_reads_each_year_of_consultancies_after_its_postback_loads(self):
+        # camara.cl posts the whole form on a year change and keeps showing the
+        # previous year's table until the new page arrives.
+        def year_page(year):
+            options = ''.join(
+                f'<option value="consultancies_{option}.html"'
+                f'{" selected" if option == year else ""}>{option}</option>'
+                for option in (2024, 2025, 2026))
+            return (
+                f'<select id="{dg_gastos.YEAR_SELECTOR_CSS[1:]}" onchange="setTimeout('
+                f'() => {{ location.href = this.value; }}, 1000)">{options}</select>'
+                f'<select id="{dg_gastos.MONTH_SELECTOR_CSS[1:]}">'
+                '<option selected>Todos</option><option>Enero</option></select>'
+                + table(('Ver', str(year), f'01/03/{year}', f'Asesor {year}', 'Informe', '$1.000')))
+
+        for year in (2024, 2025):
+            pathlib.Path(self.pages_dir.name, f'consultancies_{year}.html').write_text(
+                PAGE.format(content=year_page(year)), encoding='utf-8')
+        scraper = self.open_scraper_on(year_page(2026))
+
+        scraper._reset_dates_for_another_section()
+        while scraper.there_is_more_data_to_scrap:
+            scraper.select_all_months_in_month_dropwdown()
+            scraper.get_data_from_external_consultancies()
+            scraper.set_one_year_backward()
+
+        self.assertEqual(dg_gastos.external_consultancies['Anio'], [2026, 2025, 2024])
+        self.assertEqual(dg_gastos.external_consultancies['Asesor'],
+                         ['Asesor 2026', 'Asesor 2025', 'Asesor 2024'])
 
     def test_reads_consultancies_when_rows_load_after_the_table(self):
         scraper = self.open_scraper_on(table())
@@ -592,6 +621,7 @@ class YearStepTest(unittest.TestCase):
         timeout = TimeoutException('Month dropdown not found')
         scraper.webdriver_wait = mock.Mock()
         scraper.webdriver_wait.until.side_effect = [dropdown, timeout]
+        scraper.postback_wait = mock.Mock()
 
         with mock.patch.object(dg_gastos, 'Select') as select:
             with self.assertRaisesRegex(RuntimeError, 'No se pudo cambiar del año 2021 al año 2020') as error:
