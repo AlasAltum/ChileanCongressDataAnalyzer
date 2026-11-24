@@ -214,18 +214,19 @@ class DeputyWebDriver:
                 dropdown = find_year_dropdown(driver)
                 if not dropdown:
                     return False
-                years = list(map(int, dropdown.text.split('\n')))
                 year_select = Select(dropdown)
-                if select_latest:
-                    year = max(years)
-                    year_select.select_by_visible_text(str(year))
-                else:
-                    year = int(year_select.first_selected_option.text)
-                return years, year
+                years = [int(option.text) for option in year_select.options]
+                selected_year = int(year_select.first_selected_option.text)
+                return dropdown, years, selected_year
             except StaleElementReferenceException:
                 return False
 
-        self.available_years, self.current_year = self.webdriver_wait.until(read_year)
+        dropdown, years, selected_year = self.webdriver_wait.until(read_year)
+        if select_latest and selected_year != max(years):
+            Select(dropdown).select_by_visible_text(str(max(years)))
+            self._wait_for_postback(dropdown)
+            _, years, selected_year = self.webdriver_wait.until(read_year)
+        self.available_years, self.current_year = years, selected_year
         self._log(f'Año actual actualizado a: {self.current_year}')
 
     def get_and_update_current_month(self):
@@ -274,7 +275,7 @@ class DeputyWebDriver:
         except Exception as e:
             raise RuntimeError(f'No se pudo cambiar del año {current_year} al año {previous_year}') from e
 
-    def _select_month(self, *, last=False) -> bool:
+    def _select_month(self, *, last=False, wait_for_refresh=False) -> bool:
         for attempt in range(1, MAX_MONTH_SELECTION_ATTEMPTS + 1):
             try:
                 dropdown = self.webdriver_wait.until(_by_css_selector(MONTH_SELECTOR_CSS))
@@ -289,6 +290,8 @@ class DeputyWebDriver:
                 month_number = _month_number(month.text)
                 if month != selected:
                     month.click()
+                    if wait_for_refresh:
+                        self._wait_for_postback(dropdown)
                 self.current_month_index = month_number
                 return True
             except (ElementClickInterceptedException, StaleElementReferenceException) as exc:
@@ -297,13 +300,14 @@ class DeputyWebDriver:
                         f'No se pudo seleccionar el mes tras {attempt} intentos (año {self.current_year})'
                     ) from exc
 
-    def set_one_month_backward(self) -> bool:
+    def set_one_month_backward(self, *, wait_for_refresh=False) -> bool:
         """Select the previous listed month or the last listed month of the previous year."""
         if not self.there_is_more_data_to_scrap:
             return False
-        if self._select_month():
+        if self._select_month(wait_for_refresh=wait_for_refresh):
             return True
-        return self.set_one_year_backward() and self._select_month(last=True)
+        return self.set_one_year_backward() and self._select_month(
+            last=True, wait_for_refresh=wait_for_refresh)
 
     def _fast_check_if_there_is_data_section(self, *, empty_panel_xpath=None) -> bool:
         """Wait for the data table or a recognized no-data state."""
@@ -493,7 +497,7 @@ class DeputyWebDriver:
     def _reset_dates_for_another_section(self, *, start_at_latest=False):
         self.get_and_update_current_year(select_latest=start_at_latest)
         if start_at_latest:
-            self._select_month(last=True)
+            self._select_month(last=True, wait_for_refresh=True)
         else:
             self.get_and_update_current_month()
         self.there_is_more_data_to_scrap = True
@@ -538,7 +542,7 @@ def _scrape_deputies(driver: RemoteWebDriver) -> None:
         webdriver._reset_dates_for_another_section(start_at_latest=True)
         while webdriver.there_is_more_data_to_scrap:
             webdriver.get_data_from_support_staff()
-            webdriver.set_one_month_backward()
+            webdriver.set_one_month_backward(wait_for_refresh=True)
 
         deputies_collected_data.add(current_deputy_name)
 
