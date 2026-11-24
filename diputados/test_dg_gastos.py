@@ -44,8 +44,7 @@ class ScraperBrowserLifecycleTest(unittest.TestCase):
         self.addCleanup(driver_patch.stop)
 
     def test_main_quits_driver_on_success(self):
-        with mock.patch.object(DeputyWebDriver, 'get_deputies_names_from_dropdown',
-                               return_value=([], None)):
+        with mock.patch.object(DeputyWebDriver, 'get_deputies_from_dropdown', return_value=[]):
             dg_gastos.main()
 
         self.driver.quit.assert_called_once_with()
@@ -54,8 +53,7 @@ class ScraperBrowserLifecycleTest(unittest.TestCase):
         error = OSError('Could not stop geckodriver')
         self.driver.quit.side_effect = error
 
-        with mock.patch.object(DeputyWebDriver, 'get_deputies_names_from_dropdown',
-                               return_value=([], None)):
+        with mock.patch.object(DeputyWebDriver, 'get_deputies_from_dropdown', return_value=[]):
             with self.assertLogs(dg_gastos.__name__, level='ERROR') as logs:
                 dg_gastos.main()
 
