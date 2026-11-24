@@ -241,6 +241,10 @@ class DeputyWebDriver:
             if previous_year in self.available_years:
                 dropdown_year_select.select_by_visible_text(str(previous_year))
                 self._wait_for_postback(dropdown_year)
+                loaded_year = Select(self.webdriver_wait.until(_by_css_selector(YEAR_SELECTOR_CSS)))\
+                    .first_selected_option.text
+                if loaded_year != str(previous_year):
+                    raise ValueError(f'La página cargó el año {loaded_year}')
                 self.get_and_update_current_month()
                 self.current_year = previous_year
                 self._log(f'Se restó un año satisfactoriamente, año actual: {self.current_year}')

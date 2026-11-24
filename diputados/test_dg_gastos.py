@@ -332,6 +332,24 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
         self.assertFalse(scraper.there_is_more_data_to_scrap)
         self.assertEqual((selected_month(), scraper.current_month_index), ('marzo', 3))
 
+    def test_year_step_fails_when_postback_returns_another_year(self):
+        pathlib.Path(self.pages_dir.name, 'same_year.html').write_text(PAGE.format(content=(
+            f'<select id="{dg_gastos.YEAR_SELECTOR_CSS[1:]}">'
+            '<option>2025</option><option selected>2026</option></select>'
+        )), encoding='utf-8')
+        scraper = self.open_scraper_on(
+            f'<select id="{dg_gastos.YEAR_SELECTOR_CSS[1:]}" onchange="location.href = \'same_year.html\'">'
+            '<option>2025</option><option selected>2026</option></select>'
+        )
+        scraper.available_years = [2026, 2025]
+        scraper.current_year = 2026
+
+        with self.assertRaisesRegex(RuntimeError, 'No se pudo cambiar del año 2026 al año 2025') as error:
+            scraper.set_one_year_backward()
+
+        self.assertIn('La página cargó el año 2026', str(error.exception.__cause__))
+        self.assertEqual(scraper.current_year, 2026)
+
     def test_starts_previous_year_at_its_last_listed_month(self):
         pathlib.Path(self.pages_dir.name, 'year_2025.html').write_text(PAGE.format(content=(
             f'<select id="{dg_gastos.YEAR_SELECTOR_CSS[1:]}">'
@@ -620,14 +638,15 @@ class YearStepTest(unittest.TestCase):
         dropdown = mock.Mock()
         timeout = TimeoutException('Month dropdown not found')
         scraper.webdriver_wait = mock.Mock()
-        scraper.webdriver_wait.until.side_effect = [dropdown, timeout]
+        scraper.webdriver_wait.until.side_effect = [dropdown, dropdown, timeout]
         scraper.postback_wait = mock.Mock()
 
         with mock.patch.object(dg_gastos, 'Select') as select:
+            select.return_value.first_selected_option.text = '2020'
             with self.assertRaisesRegex(RuntimeError, 'No se pudo cambiar del año 2021 al año 2020') as error:
                 scraper.set_one_year_backward()
 
-        select.assert_called_once_with(dropdown)
+        select.assert_called_with(dropdown)
         select.return_value.select_by_visible_text.assert_called_once_with('2020')
         self.assertEqual(scraper.current_year, 2021)
         self.assertIs(error.exception.__cause__, timeout)
