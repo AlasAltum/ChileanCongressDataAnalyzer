@@ -36,6 +36,11 @@ SUPPORT_STAFF_CSS = '#ContentPlaceHolder1_ContentPlaceHolder1_btpeapo'
 NO_DATA_PARRAGRAPH_XPATH = '//div[@id="ContentPlaceHolder1_ContentPlaceHolder1_DetallePlaceHolder_nodata"]/p'
 TABLE_ROW_XPATH = '//table[@class="tabla"]/tbody/tr'
 DEPUTY_COST_TABLE_XPATH = '//table[@class="tabla"]/tbody'
+EMPTY_CONSULTANCIES_XPATH = (
+    '//*[@id="ajax-container"]//div[@id="body" and @class="table-responsive"'
+    ' and not(*) and not(normalize-space())]'
+    '[../div[@class="top-tabs-sesiones"]/h4[normalize-space()="Asesorías Externas"]]'
+)
 MONTHS = (
     'Todos', # This one appears only in some cases.
     'enero',
@@ -211,7 +216,7 @@ class DeputyWebDriver:
         self._log(f'Mes actual: {month}')
 
 
-    def set_one_year_backward(self):
+    def set_one_year_backward(self, *, wait_for_refresh=False):
         """
         Set scroller of years one year in the past by moving the selector.
         """
@@ -225,6 +230,12 @@ class DeputyWebDriver:
             # if previous_year has available data:
             if previous_year in self.available_years:
                 dropdown_year_select.select_by_visible_text(str(previous_year))
+                if wait_for_refresh:
+                    self.webdriver_wait.until(EC.staleness_of(dropdown_year))
+                    self.webdriver_wait.until(
+                        lambda driver: driver.find_element(By.CSS_SELECTOR, YEAR_SELECTOR_CSS)
+                        .get_property('value') == str(previous_year)
+                    )
                 self.get_and_update_current_month()
                 self.current_year = previous_year
                 self._log(f'Se restó un año satisfactoriamente, año actual: {self.current_year}')
@@ -269,13 +280,15 @@ class DeputyWebDriver:
             return True
         return self.set_one_year_backward() and self._select_month(last=True)
 
-    def _fast_check_if_there_is_data_section(self) -> bool:
-        """Wait for the data table or the site's explicit no-data notice."""
+    def _fast_check_if_there_is_data_section(self, *, empty_panel_xpath=None) -> bool:
+        """Wait for the data table or a recognized no-data state."""
         def find_data_section(driver):
             if driver.find_elements(By.XPATH, DEPUTY_COST_TABLE_XPATH):
                 return 'table'
             notices = driver.find_elements(By.XPATH, NO_DATA_PARRAGRAPH_XPATH)
             if any('no han sido publicados' in notice.text for notice in notices):
+                return 'no_data'
+            if empty_panel_xpath and driver.find_elements(By.XPATH, empty_panel_xpath):
                 return 'no_data'
             return None
 
@@ -378,7 +391,9 @@ class DeputyWebDriver:
         Get the data from external consultancies of a deputy during a whole year
         """
         try:
-            available_data = self._fast_check_if_there_is_data_section()
+            available_data = self._fast_check_if_there_is_data_section(
+                empty_panel_xpath=EMPTY_CONSULTANCIES_XPATH,
+            )
             if available_data is False:
                 self._log(f'Mes {MONTHS[self.current_month_index]} del año '
                   f'{self.current_year} no tiene datos. Saltando...')
@@ -486,7 +501,7 @@ def _scrape_deputies(driver: RemoteWebDriver) -> None:
         while webdriver.there_is_more_data_to_scrap:
             webdriver.select_all_months_in_month_dropwdown()
             webdriver.get_data_from_external_consultancies()
-            webdriver.set_one_year_backward()
+            webdriver.set_one_year_backward(wait_for_refresh=True)
 
         webdriver._log('Se terminaron de obtener los datos de asesorías externas de '
                        f'{current_deputy_name}, pasando a Personal de apoyo...')

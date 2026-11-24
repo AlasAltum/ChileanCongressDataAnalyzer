@@ -364,6 +364,69 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
 
         self.assertEqual(dg_gastos.external_consultancies['Asesor'], ['Juan Pérez'])
 
+    def test_consultancies_leave_live_empty_panel_empty(self):
+        fixture = pathlib.Path(__file__).with_name('fixtures') / 'empty_consultancies.html'
+        scraper = self.open_scraper_on(fixture.read_text(encoding='utf-8'))
+        scraper.get_and_update_current_year()
+        scraper.select_all_months_in_month_dropwdown()
+
+        scraper.get_data_from_external_consultancies()
+
+        self.assertFalse(any(dg_gastos.external_consultancies.values()))
+
+    def test_consultancy_scrape_waits_for_year_refresh(self):
+        fixture = pathlib.Path(__file__).with_name('fixtures') / 'empty_consultancies.html'
+        scraper = self.open_scraper_on(fixture.read_text(encoding='utf-8'))
+        self.driver.execute_script("""
+            const [yearSelector, result] = arguments;
+            const year = document.querySelector(yearSelector);
+            year.add(new Option('2025', '2025'), 0);
+            year.addEventListener('change', () => {
+                const selected = year.value;
+                setTimeout(() => {
+                    const panel = year.closest('[id$="_UpdatePanel1"]');
+                    const refreshed = panel.firstElementChild.cloneNode(true);
+                    refreshed.querySelector(yearSelector).value = selected;
+                    refreshed.querySelector('#body').innerHTML = result;
+                    panel.replaceChildren(refreshed);
+                }, 750);
+            });
+        """, dg_gastos.YEAR_SELECTOR_CSS,
+            table(('Ver', '12', '01/03/2025', 'Juan Pérez', 'Informe legislativo', '$822.400')))
+
+        reset_dates = scraper._reset_dates_for_another_section
+        is_consultancies = iter((False, True, False))
+
+        def reset_dates_only_for_consultancies():
+            if next(is_consultancies):
+                reset_dates()
+            else:
+                scraper.there_is_more_data_to_scrap = False
+
+        with mock.patch.object(dg_gastos, 'DeputyWebDriver', return_value=scraper), \
+             mock.patch.multiple(
+                 scraper,
+                 get_deputies_from_dropdown=mock.Mock(return_value=[('Deputy', '1008')]),
+                 _handle_select_to_change_deputy=mock.Mock(),
+                 get_deputy_name=mock.Mock(return_value='Deputy'),
+                 get_into_operational_costs_section=mock.Mock(),
+                 get_into_external_consultancies=mock.Mock(),
+                 get_into_supporting_staff=mock.Mock(),
+                 _reset_dates_for_another_section=reset_dates_only_for_consultancies):
+            dg_gastos._scrape_deputies(self.driver)
+
+        self.assertEqual(dg_gastos.external_consultancies['Anio'], [2025])
+        self.assertEqual(dg_gastos.external_consultancies['Asesor'], ['Juan Pérez'])
+
+    def test_consultancies_raise_when_loaded_panel_does_not_show_results(self):
+        fixture = pathlib.Path(__file__).with_name('fixtures') / 'empty_consultancies.html'
+        content = fixture.read_text(encoding='utf-8').replace(
+            '<div id="body" class="table-responsive">', '<div id="body" class="table-responsive">Error')
+        scraper = self.open_scraper_on(content)
+
+        with self.assertRaises(TimeoutException):
+            scraper.get_data_from_external_consultancies()
+
     def test_readers_leave_empty_months_empty(self):
         for content in (NO_DATA, table()):
             scraper = self.open_scraper_on(content)
