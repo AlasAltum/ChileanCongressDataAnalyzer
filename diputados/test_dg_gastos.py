@@ -366,6 +366,34 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
                                   dg_gastos.operational_costs['Montos'])),
                          [(4, '$400'), (2, '$200'), (1, '$100')])
 
+    def test_retries_month_confirmation_without_selecting_another_month(self):
+        def month_page(selected_month):
+            options = ''.join(
+                f'<option value="{month}"{" selected" if month == selected_month else ""}>'
+                f'{dg_gastos.MONTHS[month]}</option>' for month in (1, 2, 3))
+            return (f'<select id="{dg_gastos.MONTH_SELECTOR_CSS[1:]}"'
+                    ' onchange="location.href = `confirm_${this.value}.html`">'
+                    f'{options}</select>')
+
+        for month in (1, 2):
+            pathlib.Path(self.pages_dir.name, f'confirm_{month}.html').write_text(
+                PAGE.format(content=month_page(month)), encoding='utf-8')
+        scraper = self.open_scraper_on(month_page(3))
+        replaced = False
+
+        def select(dropdown):
+            nonlocal replaced
+            if not replaced and self.driver.current_url.endswith('confirm_2.html'):
+                replaced = True
+                raise StaleElementReferenceException()
+            return Select(dropdown)
+
+        with mock.patch.object(dg_gastos, 'Select', side_effect=select):
+            self.assertTrue(scraper.set_one_month_backward(wait_for_refresh=True))
+
+        self.assertTrue(replaced)
+        self.assertEqual(scraper.current_month_index, 2)
+
     def test_support_staff_scrape_starts_at_latest_period(self):
         def postback(page):
             return f' onchange="setTimeout(() => location.href = \'{page}\', 250)"' if page else ''
