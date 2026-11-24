@@ -11,6 +11,7 @@ import unittest
 from unittest import mock
 
 from selenium import webdriver
+from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
 
@@ -30,6 +31,58 @@ def table(*rows):
     body = ''.join('<tr>' + ''.join(f'<td>{cell}</td>' for cell in row) + '</tr>'
                    for row in rows)
     return f'<table class="tabla"><tbody>{body}</tbody></table>'
+
+
+class ScraperBrowserLifecycleTest(unittest.TestCase):
+
+    def setUp(self):
+        self.driver = mock.Mock(spec=webdriver.Remote)
+        driver_patch = mock.patch.object(dg_gastos, 'get_driver', return_value=self.driver)
+        driver_patch.start()
+        self.addCleanup(driver_patch.stop)
+
+    def test_main_quits_driver_on_success(self):
+        with mock.patch.object(DeputyWebDriver, 'get_deputies_names_from_dropdown',
+                               return_value=([], None)):
+            dg_gastos.main()
+
+        self.driver.quit.assert_called_once_with()
+
+    def test_main_logs_quit_failure_without_interrupting_success(self):
+        error = OSError('Could not stop geckodriver')
+        self.driver.quit.side_effect = error
+
+        with mock.patch.object(DeputyWebDriver, 'get_deputies_names_from_dropdown',
+                               return_value=([], None)):
+            with self.assertLogs(dg_gastos.__name__, level='ERROR') as logs:
+                dg_gastos.main()
+
+        self.assertIs(logs.records[0].exc_info[1], error)
+        self.driver.quit.assert_called_once_with()
+
+    def test_main_quits_driver_when_initial_navigation_fails(self):
+        error = WebDriverException('Initial navigation failed')
+        self.driver.get.side_effect = error
+
+        with self.assertRaises(WebDriverException) as raised:
+            dg_gastos.main()
+
+        self.assertIs(raised.exception, error)
+        self.driver.quit.assert_called_once_with()
+
+    def test_main_preserves_navigation_error_when_quit_also_fails(self):
+        navigation_error = WebDriverException('Initial navigation failed')
+        shutdown_error = OSError('Could not stop geckodriver')
+        self.driver.get.side_effect = navigation_error
+        self.driver.quit.side_effect = shutdown_error
+
+        with self.assertLogs(dg_gastos.__name__, level='ERROR') as logs:
+            with self.assertRaises(WebDriverException) as raised:
+                dg_gastos.main()
+
+        self.assertIs(raised.exception, navigation_error)
+        self.assertIs(logs.records[0].exc_info[1], shutdown_error)
+        self.driver.quit.assert_called_once_with()
 
 
 class DeputyWebDriverLocatorsTest(unittest.TestCase):

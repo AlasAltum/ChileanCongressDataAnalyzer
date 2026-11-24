@@ -2,6 +2,7 @@
 data getter: información de gastos de cada diputado
 @Author: AlasAltum
 """
+import logging
 import re
 import pandas as pd
 import time
@@ -472,13 +473,8 @@ class DeputyWebDriver:
         self.get_and_update_current_month()
         self.there_is_more_data_to_scrap = True
 
-def main():
-    """
-    Init the webdriver, get the data of every deputy and once all data
-    has been collected, save a .csv file with this data
 
-    """
-    driver = get_driver()
+def _scrape_deputies(driver: RemoteWebDriver) -> None:
     webdriver = DeputyWebDriver(driver)
     deputies_names, _ = webdriver.get_deputies_names_from_dropdown()
     deputies_collected_data  = set()
@@ -522,6 +518,17 @@ def main():
 
         webdriver._log('Se terminaron de obtener datos de: '
                        f'{current_deputy_name}. Seguimos con...')
+
+
+def main():
+    driver = get_driver()
+    try:
+        _scrape_deputies(driver)
+    finally:
+        try:
+            driver.quit()
+        except Exception:
+            logging.getLogger(__name__).exception('No se pudo cerrar el navegador')
 
 
 if __name__ == "__main__":
