@@ -58,7 +58,7 @@ MONTHS = (
     'diciembre',
 )
 MONTH_TEXT_TO_NUMBER = {
-    'todos': 0,
+    'Todos': 0,
     'enero': 1,
     'febrero': 2,
     'marzo': 3,
@@ -75,6 +75,11 @@ MONTH_TEXT_TO_NUMBER = {
 WAITING_TIME = 2
 # Year changes post the whole form; camara.cl took ~45 s to answer one.
 POSTBACK_TIMEOUT = 120
+
+
+def _month_number(label):
+    return MONTH_TEXT_TO_NUMBER[label if label in MONTH_TEXT_TO_NUMBER else label.lower()]
+
 
 operational_costs = {
         'diputado': [],
@@ -227,7 +232,7 @@ class DeputyWebDriver:
         self._log('Obteniendo el mes que aparece en la página...')
         dropdown = self.webdriver_wait.until(_by_css_selector(MONTH_SELECTOR_CSS))
         month = Select(dropdown).first_selected_option.text
-        self.current_month_index = MONTH_TEXT_TO_NUMBER[month.lower()]
+        self.current_month_index = _month_number(month)
         self._log(f'Mes actual: {month}')
 
     def _wait_for_postback(self, element_on_previous_page) -> None:
@@ -281,7 +286,7 @@ class DeputyWebDriver:
                     return False
 
                 month = options[position]
-                month_number = MONTH_TEXT_TO_NUMBER[month.text.lower()]
+                month_number = _month_number(month.text)
                 if month != selected:
                     month.click()
                 self.current_month_index = month_number
@@ -398,7 +403,7 @@ class DeputyWebDriver:
             dropdown_month_select = Select(dropdown_month)
             month = dropdown_month_select.options[0].text
             dropdown_month_select.select_by_index(0)
-            self.current_month_index = MONTH_TEXT_TO_NUMBER[month.lower()]
+            self.current_month_index = MONTH_TEXT_TO_NUMBER[month]
         except StaleElementReferenceException:
             self.select_all_months_in_month_dropwdown()
 
