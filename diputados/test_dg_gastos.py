@@ -387,6 +387,23 @@ class YearStepTest(unittest.TestCase):
 
         self.assertIs(error.exception.__cause__, timeout)
 
+    def test_month_refresh_timeout_after_year_selection_aborts_year_step(self):
+        scraper = DeputyWebDriver(mock.Mock())
+        scraper.available_years = [2021, 2020]
+        dropdown = mock.Mock()
+        timeout = TimeoutException('Month dropdown not found')
+        scraper.webdriver_wait = mock.Mock()
+        scraper.webdriver_wait.until.side_effect = [dropdown, timeout]
+
+        with mock.patch.object(dg_gastos, 'Select') as select:
+            with self.assertRaisesRegex(RuntimeError, 'No se pudo cambiar del año 2021 al año 2020') as error:
+                scraper.set_one_year_backward()
+
+        select.assert_called_once_with(dropdown)
+        select.return_value.select_by_visible_text.assert_called_once_with('2020')
+        self.assertEqual(scraper.current_year, 2021)
+        self.assertIs(error.exception.__cause__, timeout)
+
 
 if __name__ == '__main__':
     unittest.main()
