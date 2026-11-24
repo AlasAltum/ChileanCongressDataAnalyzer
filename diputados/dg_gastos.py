@@ -27,7 +27,6 @@ DIPUTY_SELECTOR_CSS = '#ContentPlaceHolder1_ContentPlaceHolder1_ddlDiputados'
 YEAR_SELECTOR_CSS = '#ContentPlaceHolder1_ContentPlaceHolder1_DetallePlaceHolder_ddlAno'
 MONTH_SELECTOR_CSS = '#ContentPlaceHolder1_ContentPlaceHolder1_DetallePlaceHolder_ddlMes'
 DEPUTIES_DROPDOWN_ID = 'ContentPlaceHolder1_ContentPlaceHolder1_ddlDiputados'
-CURRENT_MONTH_XPATH = '//select[@id="ContentPlaceHolder1_ContentPlaceHolder1_DetallePlaceHolder_ddlMes"]/option[@selected="selected"]'
 CURRENT_YEAR_CSS = 'ContentPlaceHolder1_ContentPlaceHolder1_DetallePlaceHolder_ddlAno'
 OPERATIONAL_COSTS_CSS = '#ContentPlaceHolder1_ContentPlaceHolder1_btGasop'
 NO_DATA_PARRAGRAPH_XPATH = '//div[@id="ContentPlaceHolder1_ContentPlaceHolder1_DetallePlaceHolder_nodata"]/p'
@@ -194,13 +193,11 @@ class DeputyWebDriver:
         self._log(f'Año actual actualizado a: {self.current_year}')
 
     def get_and_update_current_month(self):
-        """
-        
-        """
         self._log('Obteniendo el mes que aparece en la página...')
-        current_month = self.webdriver_wait.until(_by_xpath_selector(CURRENT_MONTH_XPATH))
-        self.current_month_index = MONTH_TEXT_TO_NUMBER[current_month.text]
-        self._log(f'Mes actual: {current_month.text}')
+        dropdown = self.webdriver_wait.until(_by_css_selector(MONTH_SELECTOR_CSS))
+        month = Select(dropdown).first_selected_option.text
+        self.current_month_index = MONTH_TEXT_TO_NUMBER[month]
+        self._log(f'Mes actual: {month}')
 
 
     def set_one_year_backward(self):
@@ -222,45 +219,31 @@ class DeputyWebDriver:
                 return True
             else:  # Case we reach a year without data
                 self.there_is_more_data_to_scrap = False
-                self._log('No hay datos del 2017...')
+                self._log(f'No hay datos del {previous_year}...')
                 return False
         except Exception as e:
             return False
 
-    def _get_month_dropdown_select_and_change_one_month_backward(self):
-        try:
-            dropdown_month = self.webdriver_wait.until(_by_css_selector(MONTH_SELECTOR_CSS))
-            dropdown_month_select = Select(dropdown_month)
-            # We use self.current_month_index - 1 and then substract one to current month
-            # because select by index method usually causes exceptions.
-            dropdown_month_select.select_by_index(self.current_month_index - 1)
-            self.current_month_index = self.current_month_index - 1
-
-        except (ElementClickInterceptedException, StaleElementReferenceException):
-            # this exception may happen due to high latency or
-            # when the browser is slow. There is no problem with repetition
-            # since the current month index is updated once the month is successfully changed
-            return self._get_month_dropdown_select_and_change_one_month_backward()
-
     def set_one_month_backward(self) -> bool:
-        """
-        Set scroller of month one month in the past by moving the selector.
-        
-        Returns False when iteration it has reached year 2017
-        """
-        # January case
-        if self.current_month_index == 0:
-            # Get back one year, return to december.
-            self.set_one_year_backward() # no hay datos debe ocurrir antes
-            self.current_month_index = 12
-            # If there is no more data: stop scrapping
-            if self.there_is_more_data_to_scrap:
-                return False
+        """Select the previous listed month or move to the previous year."""
+        if not self.there_is_more_data_to_scrap:
+            return False
 
-        # Get the dropdown element and set one month backward
-        self._get_month_dropdown_select_and_change_one_month_backward()
-        return True
+        try:
+            dropdown = self.webdriver_wait.until(_by_css_selector(MONTH_SELECTOR_CSS))
+            month_select = Select(dropdown)
+            options = month_select.options
+            position = options.index(month_select.first_selected_option)
+            if position > 0:
+                previous_month = options[position - 1]
+                month_number = MONTH_TEXT_TO_NUMBER[previous_month.text]
+                previous_month.click()
+                self.current_month_index = month_number
+                return True
+        except (ElementClickInterceptedException, StaleElementReferenceException):
+            return self.set_one_month_backward()
 
+        return self.set_one_year_backward()
 
     def _fast_check_if_there_is_data_section(self) -> bool:
         """
