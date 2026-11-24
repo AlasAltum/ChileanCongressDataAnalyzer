@@ -185,7 +185,7 @@ class DeputyWebDriver:
         self._log(f'Nombre del diputado cuyos datos se extraen: {self.current_deputy}')
         return name_without_prefix
 
-    def _open_deputy_section(self, link_css: str) -> None:
+    def _open_deputy_section(self, link_css: str) -> str:
         """
         Open a section link for the deputy shown on the page, without relying
         on the page layout. After a month or year postback camara.cl renders
@@ -199,7 +199,9 @@ class DeputyWebDriver:
         deputy_id = {key.lower(): value for key, value in page_query}['prmid']
         section_url = urlsplit(link.get_property('href'))._replace(
             query=urlencode({'prmId': deputy_id}))
-        self.driver.get(section_url.geturl())
+        target_url = section_url.geturl()
+        self.driver.get(target_url)
+        return target_url
 
     def get_into_operational_costs_section(self):
         self._open_deputy_section(OPERATIONAL_COSTS_CSS)
@@ -464,7 +466,12 @@ class DeputyWebDriver:
 
     def get_into_supporting_staff(self) -> bool:
         """Open the supporting staff section for the current deputy."""
-        self._open_deputy_section(SUPPORT_STAFF_CSS)
+        staff_url = self._open_deputy_section(SUPPORT_STAFF_CSS)
+        staff_path = urlsplit(staff_url).path
+        if urlsplit(self.driver.current_url).path != staff_path:
+            self.driver.get(staff_url)
+            if urlsplit(self.driver.current_url).path != staff_path:
+                raise RuntimeError(f'No se pudo abrir Personal de apoyo: {self.driver.current_url}')
         return True
 
 

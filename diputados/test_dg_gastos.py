@@ -222,6 +222,20 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
                                  f'{destination.as_uri()}?prmId=1009#ficha-diputados')
                 self.assertEqual(self.driver.title, name)
 
+    def test_retries_staff_navigation_when_the_consultancy_page_remains(self):
+        staff_page = pathlib.Path(self.pages_dir.name, 'supporting-staff.html')
+        staff_page.write_text('<title>Personal de apoyo</title>', encoding='utf-8')
+        staff_url = f'{staff_page.as_uri()}?prmId=1008'
+        scraper = self.open_scraper_on(
+            f'<a id="{dg_gastos.SUPPORT_STAFF_CSS[1:]}" href="{staff_page.name}">Personal de apoyo</a>')
+
+        with mock.patch.object(self.driver, 'get', wraps=self.driver.get,
+                               side_effect=[None, mock.DEFAULT]) as navigate:
+            scraper.get_into_supporting_staff()
+
+        self.assertEqual(navigate.call_args_list, [mock.call(staff_url), mock.call(staff_url)])
+        self.assertEqual(self.driver.current_url, staff_url)
+
     def test_detects_month_without_published_data(self):
         scraper = self.open_scraper_on(NO_DATA)
 
