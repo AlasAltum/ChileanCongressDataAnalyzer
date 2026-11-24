@@ -75,6 +75,22 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
             'Montos': ['$43.452', '$1.000'],
         })
 
+    def test_opens_operational_costs_when_link_is_obscured(self):
+        destination = pathlib.Path(self.pages_dir.name, 'gastosoperacionales.html')
+        destination.write_text('<title>Gastos operacionales</title>', encoding='utf-8')
+        scraper = self.open_scraper_on(f'''
+            <a id="ContentPlaceHolder1_ContentPlaceHolder1_btGasop"
+               href="{destination.name}#ficha-diputados">Gastos operacionales</a>
+            <div id="ajax-container">
+                <div style="position: relative; top: -2rem; height: 4rem;">Panel de detalle</div>
+            </div>
+        ''')
+
+        scraper.get_into_operational_costs_section()
+
+        self.assertEqual(self.driver.current_url, f'{destination.as_uri()}#ficha-diputados')
+        self.assertEqual(self.driver.title, 'Gastos operacionales')
+
     def test_detects_month_without_published_data(self):
         scraper = self.open_scraper_on(NO_DATA)
 
