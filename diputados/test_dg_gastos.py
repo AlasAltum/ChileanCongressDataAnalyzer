@@ -1,6 +1,8 @@
 """
 Runs the scraper's table readers against local copies of the camara.cl
-tables in a headless Firefox. Run from diputados/:
+tables in a headless Firefox. Needs the scraper's own dependencies
+(selenium, pandas) and Firefox. Run from diputados/, where dg_gastos.py
+runs and imports driver_utils:
     python -m unittest test_dg_gastos
 """
 import pathlib
