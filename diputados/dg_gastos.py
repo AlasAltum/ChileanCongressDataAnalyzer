@@ -6,6 +6,7 @@ import re
 import pandas as pd
 import time
 from selenium.webdriver import Remote as RemoteWebDriver
+from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
 from selenium.common.exceptions import (StaleElementReferenceException,
                                         TimeoutException,
@@ -264,12 +265,12 @@ class DeputyWebDriver:
         If neither the table or text was found, use an implicit wait
         """
         try:
-            if self.driver.find_element_by_xpath(DEPUTY_COST_TABLE_XPATH):
+            if self.driver.find_element(By.XPATH, DEPUTY_COST_TABLE_XPATH):
                 return True
         except NoSuchElementException:
             pass  # just ignore, maybe it is not ready or it won't find the element
         try:
-            text_parragraph = self.driver.find_element_by_xpath(NO_DATA_PARRAGRAPH_XPATH)
+            text_parragraph = self.driver.find_element(By.XPATH, NO_DATA_PARRAGRAPH_XPATH)
             if text_parragraph and 'no han sido publicados' in text_parragraph.text:
                 return False
         except NoSuchElementException:
@@ -305,8 +306,8 @@ class DeputyWebDriver:
                   f'{self.current_year} no tiene datos. Saltando...')
 
             if available_data:
-                gasto_elements = self.driver.find_elements_by_xpath('//table[@class="tabla"]/tbody/tr/td[1]')
-                monto_elements = self.driver.find_elements_by_xpath('//table[@class="tabla"]/tbody/tr/td[2]')
+                gasto_elements = self.driver.find_elements(By.XPATH, '//table[@class="tabla"]/tbody/tr/td[1]')
+                monto_elements = self.driver.find_elements(By.XPATH, '//table[@class="tabla"]/tbody/tr/td[2]')
 
                 gastos_text = [element.text for element in gasto_elements]
                 monto_text = [element.text for element in monto_elements]
@@ -349,7 +350,7 @@ class DeputyWebDriver:
         """
         
         """
-        external_consultancies_element = self.driver.find_element_by_id('ContentPlaceHolder1_ContentPlaceHolder1_btnAsexterna')
+        external_consultancies_element = self.driver.find_element(By.ID, 'ContentPlaceHolder1_ContentPlaceHolder1_btnAsexterna')
         external_consultancies_element.click()
 
 
@@ -369,12 +370,12 @@ class DeputyWebDriver:
                 # there were no changes in the DOM
                 doc_elements = self.webdriver_wait.until(_by_xpath_selector(xpath_prefix + '[1]'))
 
-                doc_elements = self.driver.find_elements_by_xpath(xpath_prefix + '[1]')
-                folio_elements = self.driver.find_elements_by_xpath(xpath_prefix + '[2]')
-                fecha_elements = self.driver.find_elements_by_xpath(xpath_prefix + '[3]')
-                asesor_elements = self.driver.find_elements_by_xpath(xpath_prefix + '[4]')
-                detalle_elements = self.driver.find_elements_by_xpath(xpath_prefix + '[5]')
-                monto_elements = self.driver.find_elements_by_xpath(xpath_prefix + '[6]')
+                doc_elements = self.driver.find_elements(By.XPATH, xpath_prefix + '[1]')
+                folio_elements = self.driver.find_elements(By.XPATH, xpath_prefix + '[2]')
+                fecha_elements = self.driver.find_elements(By.XPATH, xpath_prefix + '[3]')
+                asesor_elements = self.driver.find_elements(By.XPATH, xpath_prefix + '[4]')
+                detalle_elements = self.driver.find_elements(By.XPATH, xpath_prefix + '[5]')
+                monto_elements = self.driver.find_elements(By.XPATH, xpath_prefix + '[6]')
                 # TODO: Agregar link documento
                 doc_text = [element.text for element in doc_elements] # StaleElementReferenceException
                 folio_text = [element.text for element in folio_elements]
@@ -437,12 +438,12 @@ class DeputyWebDriver:
 
             if available_data:
                 # these XPATHS were the ones in the HTML for the following elements:
-                tipo_elements = self.driver.find_elements_by_xpath('//table[@class="tabla"]/tbody/tr/td[1]')
-                nombre_elements = self.driver.find_elements_by_xpath('//table[@class="tabla"]/tbody/tr/td[3]')
-                cargo_elements = self.driver.find_elements_by_xpath('//table[@class="tabla"]/tbody/tr/td[4]')
-                sueldo_elements = self.driver.find_elements_by_xpath('//table[@class="tabla"]/tbody/tr/td[5]')
-                cargo_eleccion_elements = self.driver.find_elements_by_xpath('//table[@class="tabla"]/tbody/tr/td[6]')
-                cese_funciones_elements = self.driver.find_elements_by_xpath('//table[@class="tabla"]/tbody/tr/td[7]')
+                tipo_elements = self.driver.find_elements(By.XPATH, '//table[@class="tabla"]/tbody/tr/td[1]')
+                nombre_elements = self.driver.find_elements(By.XPATH, '//table[@class="tabla"]/tbody/tr/td[3]')
+                cargo_elements = self.driver.find_elements(By.XPATH, '//table[@class="tabla"]/tbody/tr/td[4]')
+                sueldo_elements = self.driver.find_elements(By.XPATH, '//table[@class="tabla"]/tbody/tr/td[5]')
+                cargo_eleccion_elements = self.driver.find_elements(By.XPATH, '//table[@class="tabla"]/tbody/tr/td[6]')
+                cese_funciones_elements = self.driver.find_elements(By.XPATH, '//table[@class="tabla"]/tbody/tr/td[7]')
 
                 tipo_text = [element.text for element in tipo_elements]
                 nombre_text = [element.text for element in nombre_elements]
