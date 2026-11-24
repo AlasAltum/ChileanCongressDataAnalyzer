@@ -70,6 +70,20 @@ class ScraperBrowserLifecycleTest(unittest.TestCase):
         self.assertIs(raised.exception, error)
         self.driver.quit.assert_called_once_with()
 
+    def test_main_preserves_navigation_error_when_quit_also_fails(self):
+        navigation_error = WebDriverException('Initial navigation failed')
+        shutdown_error = OSError('Could not stop geckodriver')
+        self.driver.get.side_effect = navigation_error
+        self.driver.quit.side_effect = shutdown_error
+
+        with self.assertLogs(dg_gastos.__name__, level='ERROR') as logs:
+            with self.assertRaises(WebDriverException) as raised:
+                dg_gastos.main()
+
+        self.assertIs(raised.exception, navigation_error)
+        self.assertIs(logs.records[0].exc_info[1], shutdown_error)
+        self.driver.quit.assert_called_once_with()
+
 
 class DeputyWebDriverLocatorsTest(unittest.TestCase):
 
