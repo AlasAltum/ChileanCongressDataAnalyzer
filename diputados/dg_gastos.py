@@ -36,6 +36,7 @@ SUPPORT_STAFF_CSS = '#ContentPlaceHolder1_ContentPlaceHolder1_btpeapo'
 NO_DATA_PARRAGRAPH_XPATH = '//div[@id="ContentPlaceHolder1_ContentPlaceHolder1_DetallePlaceHolder_nodata"]/p'
 TABLE_ROW_XPATH = '//table[@class="tabla"]/tbody/tr'
 DEPUTY_COST_TABLE_XPATH = '//table[@class="tabla"]/tbody'
+TOP_LEVEL_COST_TABLE_XPATH = '//table[@class="tabla" and not(ancestor::table)]/tbody'
 EMPTY_CONSULTANCIES_XPATH = (
     '//*[@id="ajax-container"]//div[@id="body" and @class="table-responsive"'
     ' and not(*) and not(normalize-space())]'
@@ -300,7 +301,7 @@ class DeputyWebDriver:
         return section == 'table'
 
     def _read_table_cells(self, section, width, *, allow_unlabelled_column=False):
-        bodies = self.driver.find_elements(By.XPATH, '//table[@class="tabla" and not(ancestor::table)]/tbody')
+        bodies = self.driver.find_elements(By.XPATH, TOP_LEVEL_COST_TABLE_XPATH)
         tables = self.driver.execute_script("""
             return arguments[0].map(body => ({
                 headers: Array.from(body.parentElement.tHead?.rows[0]?.cells ?? []),
