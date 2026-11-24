@@ -206,24 +206,27 @@ class DeputyWebDriver:
         Set scroller of years one year in the past by moving the selector.
         """
         # TODO: Check if CSS is different in
-        self._log(f'Cambiando al año anterior: Año actual {self.current_year}')
-        try:   
+        current_year = self.current_year
+        previous_year = current_year - 1
+        self._log(f'Cambiando al año anterior: Año actual {current_year}')
+        try:
             dropdown_year = self.webdriver_wait.until(_by_css_selector(YEAR_SELECTOR_CSS))
             dropdown_year_select = Select(dropdown_year)
-            previous_year = self.current_year - 1 
             # if previous_year has available data:
             if previous_year in self.available_years:
-                self.current_year = self.current_year - 1
-                dropdown_year_select.select_by_visible_text(str(self.current_year))
-                self._log(f'Se restó un año satisfactoriamente, año actual: {self.current_year}')
+                dropdown_year_select.select_by_visible_text(str(previous_year))
                 self.get_and_update_current_month()
+                self.current_year = previous_year
+                self._log(f'Se restó un año satisfactoriamente, año actual: {self.current_year}')
                 return True
             else:  # Case we reach a year without data
                 self.there_is_more_data_to_scrap = False
                 self._log(f'No hay datos del {previous_year}...')
                 return False
+        except NoSuchWindowException:
+            raise
         except Exception as e:
-            return False
+            raise RuntimeError(f'No se pudo cambiar del año {current_year} al año {previous_year}') from e
 
     def _select_month(self, *, last=False) -> bool:
         for attempt in range(1, MAX_MONTH_SELECTION_ATTEMPTS + 1):
