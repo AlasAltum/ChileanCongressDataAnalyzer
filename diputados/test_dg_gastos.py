@@ -10,10 +10,10 @@ import tempfile
 import unittest
 from unittest import mock
 
+from selenium.common.exceptions import ElementClickInterceptedException, StaleElementReferenceException
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
-from selenium.common.exceptions import ElementClickInterceptedException, StaleElementReferenceException
 
 import dg_gastos
 from dg_gastos import DeputyWebDriver
