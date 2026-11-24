@@ -394,12 +394,13 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
         # previous year's table until the new page arrives.
         def year_page(year):
             options = ''.join(
-                f'<option value="consultancies_{option}.html"'
+                f'<option value="{option}"'
                 f'{" selected" if option == year else ""}>{option}</option>'
                 for option in (2024, 2025, 2026))
             return (
                 f'<select id="{dg_gastos.YEAR_SELECTOR_CSS[1:]}" onchange="setTimeout('
-                f'() => {{ location.href = this.value; }}, 1000)">{options}</select>'
+                f'() => {{ location.href = `consultancies_${{this.value}}.html`; }}, '
+                f'{(dg_gastos.WAITING_TIME + 1) * 1000})">{options}</select>'
                 f'<select id="{dg_gastos.MONTH_SELECTOR_CSS[1:]}">'
                 '<option selected>Todos</option><option>Enero</option></select>'
                 + table(('Ver', str(year), f'01/03/{year}', f'Asesor {year}', 'Informe', '$1.000')))
