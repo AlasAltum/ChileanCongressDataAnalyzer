@@ -11,6 +11,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from zoneinfo import ZoneInfo
 
+from normalize_deputy_names import DeputyNames, normalize_rows, read_archive_names, show_result
+
 from refresh_camara_expenses import REPORTS
 
 HERE = Path(__file__).resolve().parent
@@ -63,13 +65,15 @@ def load_operational(stage, year):
     ):
         raise ValueError("Operational checkpoint has an invalid deputy roster")
     fresh = []
+    names = set()
     for deputy in deputies:
         data = load_json(stage / "checkpoints" / f"{report}-{deputy}.json")
         months = {int(month) for month in data["months"]}
         if months - set(range(1, 13)) or not isinstance(data["deputy"], str) or not data["deputy"].strip():
             raise ValueError(f"Invalid operational checkpoint for deputy {deputy}")
+        names.add(data["deputy"])
         fresh.extend(validate_rows(report, data["rows"], year, months, data["deputy"]))
-    return fresh
+    return fresh, names
 
 
 def load_bulk(stage, report, expected_periods):
@@ -123,9 +127,12 @@ def latest_month(report, rows):
 
 def publish(stage, destination, year, month, bulk_start_year):
     expected = periods(bulk_start_year, year, month)
-    fresh = {"CostosOperacionales": load_operational(stage / "operational", year)}
+    operational, roster = load_operational(stage / "operational", year)
+    fresh = {"CostosOperacionales": operational}
+    names = DeputyNames(roster | read_archive_names(destination))
     for report in ("ConsultoriasExternas", "SupportStaff"):
         fresh[report] = load_bulk(stage / "bulk", report, expected)
+        show_result(report, *normalize_rows(fresh[report], 0, names))
 
     outputs = {}
     for report, rows in fresh.items():
