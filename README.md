@@ -12,3 +12,25 @@ dg_gastos.py includes a scraper written using Selenium that gets all available d
 The subfolder collected_data contains the results of the scrapped data. Please note that there are a lot of deputies, and there is a lot of data that must be recorded, so this application may take a while (it took me like 4 hours to get all data running this program)
 
 The subfolder analysis_results will contain notebooks and queries with interesting data. We will use this in the future to make a page for transparency about politicians in Chile, crossing information between them.
+
+## Daily expense refresh
+
+Run the following on a persistent host with Python 3.11, Firefox, and a working graphical session. The working configuration uses Selenium 4.54.0 with Selenium Manager providing geckodriver, and pandas 1.5.3 (the analysis uses pandas 1.x).
+
+```sh
+python3.11 -m venv ~/.venvs/congress
+~/.venvs/congress/bin/pip install 'selenium==4.54.0' 'pandas==1.5.3' 'numpy<2'
+DISPLAY=:0 PYTHONDONTWRITEBYTECODE=1 ~/.venvs/congress/bin/python diputados/refresh_expenses.py
+```
+
+The command selects the current year and month in Chile, checks the public per-deputy operational cost pages and the monthly Transparencia Activa lists for external consultancies and support staff, and stages data outside the checkout. It verifies that it checked every roster entry and requested bulk month and validates rows before replacing any CSV. Archived periods outside the refreshed coverage remain in `diputados/collected_data/`. A selected month with no published records does not remove existing records.
+
+To run daily, add a cron job on that host with the actual checkout path and X display. For example, at 06:15 in the host's local time:
+
+```cron
+15 6 * * * flock -n "$HOME/.camara-expenses.lock" env DISPLAY=:0 PYTHONDONTWRITEBYTECODE=1 "$HOME/.venvs/congress/bin/python" "$HOME/repos/ChileanCongressDataAnalyzer/diputados/refresh_expenses.py" >> "$HOME/camara-expenses.log" 2>&1
+```
+
+Verify that this job can open Firefox and the three source pages before enabling it. Ordinary HTTP requests returned Cloudflare 403 in the tested environment; graphical Firefox worked. A run can fail on source timeouts or challenges without replacing the last published files. Rerun with the same `--stage` to resume incomplete checkpoints; use a new directory to recheck previously completed selections. Use `--publish-only --stage PATH` to validate and publish a completed staged run without reopening the browser. When reusing a stage from a different date, also supply the original `--year`, `--month` and `--bulk-start-year`.
+
+The operational pages checked in November 2026 displayed only 2026 in the year selector, so the refresh does not fill the 2022–2025 operational gap. Use `--bulk-start-year 2022` for a longer staff and consultancy refresh. The consolidated reports use the site's abbreviated deputy names. The consultancy export records the publication month as `YYYY-MM` in `Fecha`, not an exact transaction date; the list does not supply `Detalle`.
