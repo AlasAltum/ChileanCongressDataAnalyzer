@@ -13,6 +13,7 @@ from selenium.common.exceptions import (StaleElementReferenceException,
                                         NoSuchWindowException,
                                         ElementClickInterceptedException,
                                         NoSuchElementException)
+from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from driver_utils import get_driver, _by_css_selector, _by_xpath_selector, _by_id
 
@@ -172,10 +173,12 @@ class DeputyWebDriver:
 
     def get_into_operational_costs_section(self):
         """
-        Move the webdriver into the section of operational costs
+        Open the operational-costs URL without relying on the page layout.
         """
-        operational_costs = self.webdriver_wait.until(_by_css_selector(OPERATIONAL_COSTS_CSS))
-        operational_costs.click()
+        link = self.webdriver_wait.until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, OPERATIONAL_COSTS_CSS))
+        )
+        self.driver.get(link.get_property('href'))
 
     def get_and_update_current_year(self):
         """
