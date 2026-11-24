@@ -15,7 +15,7 @@ from selenium.common.exceptions import (StaleElementReferenceException,
                                         ElementClickInterceptedException)
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
-from driver_utils import get_driver, _by_css_selector, _by_xpath_selector, _by_id
+from driver_utils import get_driver, _by_css_selector, _by_id
 
 THERE_IS_TABLE = 0
 THERE_IS_NO_TABLE_BUT_TEXT = 1
@@ -268,6 +268,27 @@ class DeputyWebDriver:
         )
         return section == 'table'
 
+    def _read_table_cells(self, section, width, *, allow_unlabelled_column=False):
+        rows = []
+        for body in self.driver.find_elements(By.XPATH, DEPUTY_COST_TABLE_XPATH):
+            expected = width
+            if allow_unlabelled_column:
+                headers = body.find_elements(By.XPATH, '../thead/tr[1]/*[self::th or self::td]')
+                if len(headers) == width + 1 and not headers[-1].text.strip():
+                    expected = width + 1
+
+            for row_number, row in enumerate(body.find_elements(By.XPATH, './tr'), start=1):
+                cells = row.find_elements(By.XPATH, './td')
+                if len(cells) != expected:
+                    raise ValueError(
+                        f'{section}: {self.current_deputy}, '
+                        f'{MONTHS[self.current_month_index]} de {self.current_year}, '
+                        f'fila {row_number}: se esperaban {expected} celdas, '
+                        f'se encontraron {len(cells)}'
+                    )
+                rows.append([cell.text for cell in cells[:width]])
+        return rows
+
 
     def get_data_from_operational_costs_table(self) -> None:
         """
@@ -289,13 +310,8 @@ class DeputyWebDriver:
                   f'{self.current_year} no tiene datos. Saltando...')
 
             if available_data:
-                gasto_elements = self.driver.find_elements(By.XPATH, '//table[@class="tabla"]/tbody/tr/td[1]')
-                monto_elements = self.driver.find_elements(By.XPATH, '//table[@class="tabla"]/tbody/tr/td[2]')
-
-                gastos_text = [element.text for element in gasto_elements]
-                monto_text = [element.text for element in monto_elements]
-
-                for gasto, monto in zip(gastos_text, monto_text):
+                for gasto, monto in self._read_table_cells(
+                        'Costos operacionales', 2, allow_unlabelled_column=True):
                     operational_costs['diputado'].append(self.current_deputy)
                     operational_costs['Anio'].append(self.current_year)
                     operational_costs['Mes'].append(self.current_month_index)
@@ -345,31 +361,16 @@ class DeputyWebDriver:
                   f'{self.current_year} no tiene datos. Saltando...')
 
             if available_data:
-                xpath_prefix = '//table[@class="tabla"]/tbody/tr/td'
                 try:
-                    self.webdriver_wait.until(_by_xpath_selector(xpath_prefix + '[1]'))
+                    self.webdriver_wait.until(EC.presence_of_element_located((By.XPATH, TABLE_ROW_XPATH)))
                 except TimeoutException:
                     if (self.driver.find_elements(By.XPATH, DEPUTY_COST_TABLE_XPATH)
                             and not self.driver.find_elements(By.XPATH, TABLE_ROW_XPATH)):
                         return
                     raise
 
-                doc_elements = self.driver.find_elements(By.XPATH, xpath_prefix + '[1]')
-                folio_elements = self.driver.find_elements(By.XPATH, xpath_prefix + '[2]')
-                fecha_elements = self.driver.find_elements(By.XPATH, xpath_prefix + '[3]')
-                asesor_elements = self.driver.find_elements(By.XPATH, xpath_prefix + '[4]')
-                detalle_elements = self.driver.find_elements(By.XPATH, xpath_prefix + '[5]')
-                monto_elements = self.driver.find_elements(By.XPATH, xpath_prefix + '[6]')
                 # TODO: Agregar link documento
-                doc_text = [element.text for element in doc_elements] # StaleElementReferenceException
-                folio_text = [element.text for element in folio_elements]
-                fecha_text = [element.text for element in fecha_elements]
-                asesor_text = [element.text for element in asesor_elements]
-                detalle_text = [element.text for element in detalle_elements]
-                monto_text = [element.text for element in monto_elements]
-
-                for doc, folio, fecha, asesor, detalle, monto in zip(
-                        doc_text, folio_text, fecha_text, asesor_text, detalle_text, monto_text):
+                for doc, folio, fecha, asesor, detalle, monto in self._read_table_cells('Asesorías externas', 6):
                     external_consultancies['Diputado'].append(self.current_deputy)
                     external_consultancies['Anio'].append(self.current_year)
                     external_consultancies['Doc'].append(doc)
@@ -410,23 +411,8 @@ class DeputyWebDriver:
                   f'{self.current_year} no tiene datos. Saltando...')
 
             if available_data:
-                # these XPATHS were the ones in the HTML for the following elements:
-                tipo_elements = self.driver.find_elements(By.XPATH, '//table[@class="tabla"]/tbody/tr/td[1]')
-                nombre_elements = self.driver.find_elements(By.XPATH, '//table[@class="tabla"]/tbody/tr/td[3]')
-                cargo_elements = self.driver.find_elements(By.XPATH, '//table[@class="tabla"]/tbody/tr/td[4]')
-                sueldo_elements = self.driver.find_elements(By.XPATH, '//table[@class="tabla"]/tbody/tr/td[5]')
-                cargo_eleccion_elements = self.driver.find_elements(By.XPATH, '//table[@class="tabla"]/tbody/tr/td[6]')
-                cese_funciones_elements = self.driver.find_elements(By.XPATH, '//table[@class="tabla"]/tbody/tr/td[7]')
-
-                tipo_text = [element.text for element in tipo_elements]
-                nombre_text = [element.text for element in nombre_elements]
-                cargo_text = [element.text for element in cargo_elements]
-                sueldo_text = [element.text for element in sueldo_elements]
-                cargo_eleccion_text = [element.text for element in cargo_eleccion_elements]
-                cese_funciones_text = [element.text for element in cese_funciones_elements]
-
-                for tipo, nombre, cargo, sueldo, cargo_eleccion, cese in zip(
-                    tipo_text, nombre_text, cargo_text, sueldo_text, cargo_eleccion_text, cese_funciones_text):
+                for tipo, _, nombre, cargo, sueldo, cargo_eleccion, cese in self._read_table_cells(
+                        'Personal de apoyo', 7):
                     support_staff['Diputado'].append(self.current_deputy)
                     support_staff['Anio'].append(self.current_year)
                     support_staff['Mes'].append(self.current_month_index)
