@@ -1,4 +1,4 @@
-"""Normalize bulk-report deputy names using the operational roster and archive."""
+"""Normalize bulk-report deputy names using Cámara rosters and the archive."""
 
 import argparse
 import csv
@@ -15,6 +15,7 @@ REPORT_COLUMNS = {
     "SupportStaff": "Diputado",
 }
 BULK_REPORTS = ("ConsultoriasExternas", "SupportStaff")
+PERIOD_ROSTER = Path(__file__).with_name("deputies_2022_2026.csv")
 
 
 def tokens(value):
@@ -33,10 +34,17 @@ def given_matches(report, known):
 
 
 class DeputyNames:
-    def __init__(self, names):
+    def __init__(self, names, period_roster=()):
         self.by_surnames = defaultdict(set)
         self.resolved = {}
-        for name in set(names):
+        period_counts = Counter()
+        self.conflicted = set()
+        for spellings in period_roster:
+            period_counts.update(spellings)
+            if len(spellings) > 1:
+                self.conflicted.update(spellings)
+        self.conflicted.update(name for name, count in period_counts.items() if count > 1)
+        for name in set(names).union(period_counts):
             if "," in name:
                 continue
             parts = tokens(name)
@@ -59,7 +67,7 @@ class DeputyNames:
             return name
         candidates = {full for known_given, full in self.by_surnames.get(surnames, ())
                       if given_matches(given, known_given)}
-        return candidates.pop() if len(candidates) == 1 else name
+        return candidates.pop() if len(candidates) == 1 and candidates.isdisjoint(self.conflicted) else name
 
 
 def read_archive_names(directory):
@@ -70,6 +78,14 @@ def read_archive_names(directory):
             with path.open(encoding="utf-8", newline="") as stream:
                 names.update(row[column] for row in csv.DictReader(stream) if row[column])
     return names
+
+
+def build_name_map(directory, roster=(), period_path=PERIOD_ROSTER):
+    by_deputy = defaultdict(set)
+    with period_path.open(encoding="utf-8", newline="") as stream:
+        for row in csv.DictReader(stream):
+            by_deputy[row["DIPID"]].add(row["NombreCompleto"])
+    return DeputyNames(read_archive_names(directory).union(roster), by_deputy.values())
 
 
 def normalize_rows(rows, column, names):
@@ -137,7 +153,7 @@ def main():
     args = parser.parse_args()
     if args.staff_month and not re.fullmatch(r"[0-9]{4}-(0[1-9]|1[0-2])", args.staff_month):
         parser.error("--staff-month must be YYYY-MM")
-    names = DeputyNames(read_archive_names(args.data_dir))
+    names = build_name_map(args.data_dir)
     for report in ("SupportStaff",) if args.staff_month else BULK_REPORTS:
         period = tuple(args.staff_month.split("-")) if args.staff_month else None
         show_result(report, *rewrite(args.data_dir / f"{report}.csv", names, period))

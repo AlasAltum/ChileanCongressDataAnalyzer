@@ -3,7 +3,7 @@ import unittest
 from collections import Counter
 from pathlib import Path
 
-from normalize_deputy_names import DeputyNames, rewrite
+from normalize_deputy_names import DeputyNames, build_name_map, rewrite
 
 
 class DeputyNamesTests(unittest.TestCase):
@@ -28,6 +28,30 @@ class DeputyNamesTests(unittest.TestCase):
                      "Alarcón Rojas, Florencia"):
             with self.subTest(name=name):
                 self.assertEqual(self.names.resolve(name), name)
+
+    def test_official_period_roster_fills_gaps_in_the_archive(self):
+        with tempfile.TemporaryDirectory() as directory:
+            names = build_name_map(Path(directory))
+            for name in ("Acevedo S., María Candelaria", "Acevedo Sáez, María Candelaria"):
+                with self.subTest(name=name):
+                    self.assertEqual(names.resolve(name), "María Candelaria Acevedo Sáez")
+
+    def test_conflicting_spellings_for_same_official_id_are_not_mapped(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "period.csv"
+            path.write_text(
+                "DIPID,NombreCompleto\n"
+                "1,Juan Pérez Molina\n"
+                "1,Juan Peres Molina\n"
+                "2,María Díaz Castro\n"
+                "2,María Díaz Castro\n",
+                encoding="utf-8",
+            )
+            names = build_name_map(path.parent, {"Juan Pérez Molina"}, period_path=path)
+            for name in ("Pérez Molina, Juan", "Peres Molina, Juan"):
+                with self.subTest(name=name):
+                    self.assertEqual(names.resolve(name), name)
+            self.assertEqual(names.resolve("Díaz Castro, María"), "María Díaz Castro")
 
     def test_month_rewrite_preserves_other_records_and_reports_misses(self):
         with tempfile.TemporaryDirectory() as directory:

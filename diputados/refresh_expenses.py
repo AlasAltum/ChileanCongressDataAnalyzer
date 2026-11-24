@@ -11,7 +11,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from zoneinfo import ZoneInfo
 
-from normalize_deputy_names import DeputyNames, normalize_rows, read_archive_names, show_result
+from normalize_deputy_names import build_name_map, normalize_rows, show_result
 
 from refresh_camara_expenses import REPORTS
 
@@ -129,7 +129,7 @@ def publish(stage, destination, year, month, bulk_start_year):
     expected = periods(bulk_start_year, year, month)
     operational, roster = load_operational(stage / "operational", year)
     fresh = {"CostosOperacionales": operational}
-    names = DeputyNames(roster | read_archive_names(destination))
+    names = build_name_map(destination, roster)
     for report in ("ConsultoriasExternas", "SupportStaff"):
         fresh[report] = load_bulk(stage / "bulk", report, expected)
         show_result(report, *normalize_rows(fresh[report], 0, names))
