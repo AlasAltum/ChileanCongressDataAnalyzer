@@ -199,17 +199,20 @@ class DeputyWebDriver:
     def get_into_operational_costs_section(self):
         self._open_deputy_section(OPERATIONAL_COSTS_CSS)
 
-    def get_and_update_current_year(self):
-        """
-        Gets the current year in the selector and select it as the current year
-        """
+    def get_and_update_current_year(self, *, select_latest=False):
+        """Read the available years and optionally select the newest one."""
         self._log('Obteniendo el año que aparece en la página...')
-        current_year = self.webdriver_wait.until(_by_css_selector(YEAR_SELECTOR_CSS))
+        dropdown = self.webdriver_wait.until(_by_css_selector(YEAR_SELECTOR_CSS))
         # example: 2018\n2019\n2020\n2021
         # after map(int, example) -> [2018, 2019, 2020, 2021]
-        self.available_years = list(map(int, current_year.text.split('\n')))
-        # get the current year
-        self.current_year = int(Select(current_year).first_selected_option.text)
+        self.available_years = list(map(int, dropdown.text.split('\n')))
+        year_select = Select(dropdown)
+        if select_latest:
+            latest_year = max(self.available_years)
+            year_select.select_by_visible_text(str(latest_year))
+            self.current_year = latest_year
+        else:
+            self.current_year = int(year_select.first_selected_option.text)
         self._log(f'Año actual actualizado a: {self.current_year}')
 
     def get_and_update_current_month(self):
@@ -474,9 +477,12 @@ class DeputyWebDriver:
         except StaleElementReferenceException:
             self.get_data_from_support_staff()  # Just reload
 
-    def _reset_dates_for_another_section(self):
-        self.get_and_update_current_year()
-        self.get_and_update_current_month()
+    def _reset_dates_for_another_section(self, *, start_at_latest=False):
+        self.get_and_update_current_year(select_latest=start_at_latest)
+        if start_at_latest:
+            self._select_month(last=True)
+        else:
+            self.get_and_update_current_month()
         self.there_is_more_data_to_scrap = True
 
 
@@ -516,7 +522,7 @@ def _scrape_deputies(driver: RemoteWebDriver) -> None:
                        f'{current_deputy_name}, pasando a Personal de apoyo...')
         # get all supporting staff
         webdriver.get_into_supporting_staff()
-        webdriver._reset_dates_for_another_section()
+        webdriver._reset_dates_for_another_section(start_at_latest=True)
         while webdriver.there_is_more_data_to_scrap:
             webdriver.get_data_from_support_staff()
             webdriver.set_one_month_backward()

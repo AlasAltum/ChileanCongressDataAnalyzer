@@ -307,6 +307,39 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
         self.assertEqual(dg_gastos.operational_costs['Gastos'], ['TELEFONÍA'])
         self.assertEqual(dg_gastos.operational_costs['Montos'], ['$43.452'])
 
+    def test_support_staff_scrape_starts_at_latest_period(self):
+        def date_controls(*months, latest=False):
+            selected = ' selected' if latest else ''
+            month_options = ''.join(f'<option>{month}</option>' for month in months)
+            return (
+                f'<select id="{dg_gastos.YEAR_SELECTOR_CSS[1:]}">'
+                f'<option>2025</option><option{selected}>2026</option></select>'
+                f'<select id="{dg_gastos.MONTH_SELECTOR_CSS[1:]}">{month_options}</select>')
+
+        staff_row = ('Personal de apoyo', '1', 'Ana Soto', 'Secretaria', '$1.200.000', 'No', '')
+        pages = {
+            'costs.html': (
+                f'<select id="{dg_gastos.DEPUTIES_DROPDOWN_ID}"><option value="1009">Deputy</option></select>'
+                '<div class="rotulo">Deputy</div>'
+                f'<a id="{dg_gastos.OPERATIONAL_COSTS_CSS[1:]}" href="costs.html">Costs</a>'
+                f'<a id="{dg_gastos.EXTERNAL_CONSULTANCIES_CSS[1:]}" href="consultancies.html">Consultancies</a>'
+                + date_controls('marzo', latest=True) + NO_DATA),
+            'consultancies.html': (
+                f'<a id="{dg_gastos.SUPPORT_STAFF_CSS[1:]}" href="staff.html">Staff</a>'
+                + date_controls('Todos', latest=True) + NO_DATA),
+            'staff.html': date_controls('marzo', 'noviembre') + table(staff_row),
+        }
+        for filename, content in pages.items():
+            pathlib.Path(self.pages_dir.name, filename).write_text(
+                PAGE.format(content=content), encoding='utf-8')
+        start = pathlib.Path(self.pages_dir.name, 'costs.html').as_uri()
+
+        with mock.patch.object(dg_gastos, 'FIRST_DIPUTY_URL', f'{start}?prmId=1009'):
+            dg_gastos._scrape_deputies(self.driver)
+
+        self.assertEqual(list(zip(dg_gastos.support_staff['Anio'], dg_gastos.support_staff['Mes'])),
+                         [(2026, 11), (2026, 3), (2025, 11), (2025, 3)])
+
     def test_steps_through_sparse_month_options_and_stops_at_boundary(self):
         months = ['marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
                   'septiembre', 'octubre', 'noviembre']
