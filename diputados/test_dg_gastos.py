@@ -190,6 +190,16 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
                         getattr(scraper, reader)()
                     self.assertFalse(any(collected.values()))
 
+    def test_operational_costs_rejects_header_cells_in_data_rows(self):
+        for cells in ('<td>$43.452</td><th>Encabezado</th>', '<th>Encabezado</th>'):
+            with self.subTest(cells=cells):
+                scraper = self.open_scraper_on(table(('TRASLACIÓN', '$10.000')).replace(
+                    '</tbody>', f'<tr><td>TELEFONÍA</td>{cells}</tr></tbody>'))
+
+                with self.assertRaisesRegex(ValueError, 'Costos operacionales.*fila 2.*celdas td'):
+                    scraper.get_data_from_operational_costs_table()
+                self.assertFalse(any(dg_gastos.operational_costs.values()))
+
     def test_reads_operational_costs_with_unlabelled_site_column(self):
         content = table(('TELEFONÍA', '$43.452', '&nbsp;')).replace(
             '<tbody>', '<thead><tr><th>Gastos</th><th>Monto</th><th>&nbsp;</th></tr></thead><tbody>')

@@ -269,22 +269,31 @@ class DeputyWebDriver:
         return section == 'table'
 
     def _read_table_cells(self, section, width, *, allow_unlabelled_column=False):
+        bodies = self.driver.find_elements(By.XPATH, DEPUTY_COST_TABLE_XPATH)
+        tables = self.driver.execute_script("""
+            return arguments[0].map(body => ({
+                headers: Array.from(body.parentElement.tHead?.rows[0]?.cells ?? []),
+                rows: Array.from(body.rows, row => {
+                    const cells = Array.from(row.cells);
+                    return [cells, cells.filter(cell => cell.localName === 'td').length];
+                }),
+            }));
+        """, bodies)
         rows = []
-        for body in self.driver.find_elements(By.XPATH, DEPUTY_COST_TABLE_XPATH):
+        for table in tables:
             expected = width
             if allow_unlabelled_column:
-                headers = body.find_elements(By.XPATH, '../thead/tr[1]/*[self::th or self::td]')
+                headers = table['headers']
                 if len(headers) == width + 1 and not headers[-1].text.strip():
                     expected = width + 1
 
-            for row_number, row in enumerate(body.find_elements(By.XPATH, './tr'), start=1):
-                cells = row.find_elements(By.XPATH, './td')
-                if len(cells) != expected:
+            for row_number, (cells, data_count) in enumerate(table['rows'], start=1):
+                if len(cells) != expected or data_count != expected:
                     raise ValueError(
                         f'{section}: {self.current_deputy}, '
                         f'{MONTHS[self.current_month_index]} de {self.current_year}, '
-                        f'fila {row_number}: se esperaban {expected} celdas, '
-                        f'se encontraron {len(cells)}'
+                        f'fila {row_number}: se esperaban {expected} celdas td, '
+                        f'se encontraron {len(cells)} celdas ({data_count} td)'
                     )
                 rows.append([cell.text for cell in cells[:width]])
         return rows
