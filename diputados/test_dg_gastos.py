@@ -327,7 +327,18 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
             'consultancies.html': (
                 f'<a id="{dg_gastos.SUPPORT_STAFF_CSS[1:]}" href="staff.html">Staff</a>'
                 + date_controls('Todos', latest=True) + NO_DATA),
-            'staff.html': date_controls('marzo', 'Noviembre') + table(staff_row),
+            'staff.html': date_controls('marzo') + table(staff_row) + f"""
+                <script>
+                    const year = document.querySelector('{dg_gastos.YEAR_SELECTOR_CSS}');
+                    const month = document.querySelector('{dg_gastos.MONTH_SELECTOR_CSS}');
+                    const name = document.querySelector('tbody tr').cells[2];
+                    year.addEventListener('change', () => {{
+                        const latest = year.value === '2026';
+                        month.replaceChildren(new Option('marzo'));
+                        if (latest) month.add(new Option('Noviembre'));
+                        name.textContent = latest ? 'Beatriz Díaz' : 'Ana Soto';
+                    }});
+                </script>""",
         }
         for filename, content in pages.items():
             pathlib.Path(self.pages_dir.name, filename).write_text(
@@ -337,8 +348,9 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
         with mock.patch.object(dg_gastos, 'FIRST_DIPUTY_URL', f'{start}?prmId=1009'):
             dg_gastos._scrape_deputies(self.driver)
 
-        self.assertEqual(list(zip(dg_gastos.support_staff['Anio'], dg_gastos.support_staff['Mes'])),
-                         [(2026, 11), (2026, 3), (2025, 11), (2025, 3)])
+        staff = dg_gastos.support_staff
+        self.assertEqual(list(zip(staff['Anio'], staff['Mes'], staff['Nombre'])),
+                         [(2026, 11, 'Beatriz Díaz'), (2026, 3, 'Beatriz Díaz'), (2025, 3, 'Ana Soto')])
 
     def test_steps_through_sparse_month_options_and_stops_at_boundary(self):
         months = ['marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
