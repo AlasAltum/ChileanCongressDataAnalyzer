@@ -76,6 +76,11 @@ WAITING_TIME = 2
 # Period changes post the whole form; camara.cl took ~45 s to answer one.
 POSTBACK_TIMEOUT = 120
 
+
+def _month_number(label):
+    return MONTH_TEXT_TO_NUMBER[label if label in MONTH_TEXT_TO_NUMBER else label.lower()]
+
+
 operational_costs = {
         'diputado': [],
         'Anio': [],
@@ -180,7 +185,7 @@ class DeputyWebDriver:
         self._log(f'Nombre del diputado cuyos datos se extraen: {self.current_deputy}')
         return name_without_prefix
 
-    def _open_deputy_section(self, link_css: str) -> None:
+    def _open_deputy_section(self, link_css: str) -> str:
         """
         Open a section link for the deputy shown on the page, without relying
         on the page layout. After a month or year postback camara.cl renders
@@ -194,29 +199,47 @@ class DeputyWebDriver:
         deputy_id = {key.lower(): value for key, value in page_query}['prmid']
         section_url = urlsplit(link.get_property('href'))._replace(
             query=urlencode({'prmId': deputy_id}))
-        self.driver.get(section_url.geturl())
+        target_url = section_url.geturl()
+        self.driver.get(target_url)
+        return target_url
 
     def get_into_operational_costs_section(self):
         self._open_deputy_section(OPERATIONAL_COSTS_CSS)
 
-    def get_and_update_current_year(self):
-        """
-        Gets the current year in the selector and select it as the current year
-        """
+    def get_and_update_current_year(self, *, select_latest=False):
+        """Read the available years and optionally select the newest one."""
         self._log('Obteniendo el año que aparece en la página...')
-        current_year = self.webdriver_wait.until(_by_css_selector(YEAR_SELECTOR_CSS))
-        # example: 2018\n2019\n2020\n2021
-        # after map(int, example) -> [2018, 2019, 2020, 2021]
-        self.available_years = list(map(int, current_year.text.split('\n')))
-        # get the current year
-        self.current_year = int(Select(current_year).first_selected_option.text)
+        find_year_dropdown = _by_css_selector(YEAR_SELECTOR_CSS)
+
+        def read_year(driver):
+            try:
+                dropdown = find_year_dropdown(driver)
+                if not dropdown:
+                    return False
+                year_select = Select(dropdown)
+                years = [int(option.text) for option in year_select.options]
+                selected_year = int(year_select.first_selected_option.text)
+                return dropdown, years, selected_year
+            except StaleElementReferenceException:
+                return False
+
+        dropdown, years, selected_year = self.webdriver_wait.until(read_year)
+        if select_latest:
+            latest_year = max(years)
+            if selected_year != latest_year:
+                Select(dropdown).select_by_visible_text(str(latest_year))
+                self._wait_for_postback(dropdown)
+                _, years, selected_year = self.webdriver_wait.until(read_year)
+                if selected_year != latest_year:
+                    raise ValueError(f'La página cargó el año {selected_year} en vez de {latest_year}')
+        self.available_years, self.current_year = years, selected_year
         self._log(f'Año actual actualizado a: {self.current_year}')
 
     def get_and_update_current_month(self):
         self._log('Obteniendo el mes que aparece en la página...')
         dropdown = self.webdriver_wait.until(_by_css_selector(MONTH_SELECTOR_CSS))
         month = Select(dropdown).first_selected_option.text
-        self.current_month_index = MONTH_TEXT_TO_NUMBER[month]
+        self.current_month_index = _month_number(month)
         self._log(f'Mes actual: {month}')
 
     def _wait_for_postback(self, element_on_previous_page) -> None:
@@ -270,25 +293,22 @@ class DeputyWebDriver:
                     return False
 
                 month = options[position]
-                month_text = month.text
-                month_number = MONTH_TEXT_TO_NUMBER[month_text]
-                changed = month != selected
-                if changed:
+                month_number = _month_number(month.text)
+                if month != selected:
                     month.click()
+                    if wait_for_refresh:
+                        self._wait_for_postback(dropdown)
+                        refreshed_dropdown = self.webdriver_wait.until(_by_css_selector(MONTH_SELECTOR_CSS))
+                        loaded_month = Select(refreshed_dropdown).first_selected_option.text
+                        if _month_number(loaded_month) != month_number:
+                            raise ValueError(f'La página cargó {loaded_month} en vez de {MONTHS[month_number]}')
+                self.current_month_index = month_number
+                return True
             except (ElementClickInterceptedException, StaleElementReferenceException) as exc:
                 if attempt == MAX_MONTH_SELECTION_ATTEMPTS:
                     raise RuntimeError(
                         f'No se pudo seleccionar el mes tras {attempt} intentos (año {self.current_year})'
                     ) from exc
-            else:
-                if changed and wait_for_refresh:
-                    self._wait_for_postback(dropdown)
-                    loaded_dropdown = self.webdriver_wait.until(_by_css_selector(MONTH_SELECTOR_CSS))
-                    loaded_month = Select(loaded_dropdown).first_selected_option.text
-                    if loaded_month != month_text:
-                        raise ValueError(f'La página cargó el mes {loaded_month} en vez de {month_text}')
-                self.current_month_index = month_number
-                return True
 
     def set_one_month_backward(self, *, wait_for_refresh=False) -> bool:
         """Select the previous listed month or the last listed month of the previous year."""
@@ -446,7 +466,12 @@ class DeputyWebDriver:
 
     def get_into_supporting_staff(self) -> bool:
         """Open the supporting staff section for the current deputy."""
-        self._open_deputy_section(SUPPORT_STAFF_CSS)
+        staff_url = self._open_deputy_section(SUPPORT_STAFF_CSS)
+        staff_path = urlsplit(staff_url).path
+        if urlsplit(self.driver.current_url).path != staff_path:
+            self.driver.get(staff_url)
+            if urlsplit(self.driver.current_url).path != staff_path:
+                raise RuntimeError(f'No se pudo abrir Personal de apoyo: {self.driver.current_url}')
         return True
 
 
@@ -484,9 +509,12 @@ class DeputyWebDriver:
         except StaleElementReferenceException:
             self.get_data_from_support_staff()  # Just reload
 
-    def _reset_dates_for_another_section(self):
-        self.get_and_update_current_year()
-        self.get_and_update_current_month()
+    def _reset_dates_for_another_section(self, *, start_at_latest=False):
+        self.get_and_update_current_year(select_latest=start_at_latest)
+        if start_at_latest:
+            self._select_month(last=True, wait_for_refresh=True)
+        else:
+            self.get_and_update_current_month()
         self.there_is_more_data_to_scrap = True
 
 
@@ -526,10 +554,10 @@ def _scrape_deputies(driver: RemoteWebDriver) -> None:
                        f'{current_deputy_name}, pasando a Personal de apoyo...')
         # get all supporting staff
         webdriver.get_into_supporting_staff()
-        webdriver._reset_dates_for_another_section()
+        webdriver._reset_dates_for_another_section(start_at_latest=True)
         while webdriver.there_is_more_data_to_scrap:
             webdriver.get_data_from_support_staff()
-            webdriver.set_one_month_backward()
+            webdriver.set_one_month_backward(wait_for_refresh=True)
 
         deputies_collected_data.add(current_deputy_name)
 
