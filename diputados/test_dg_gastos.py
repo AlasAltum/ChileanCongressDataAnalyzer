@@ -10,6 +10,7 @@ import tempfile
 import unittest
 from unittest import mock
 
+from selenium.common.exceptions import ElementClickInterceptedException, StaleElementReferenceException
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.common.by import By
@@ -299,6 +300,56 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
 
         with self.assertRaises(TimeoutException):
             scraper.get_into_supporting_staff()
+
+class MonthClickRetryTest(unittest.TestCase):
+
+    def setUp(self):
+        self.scraper = DeputyWebDriver(mock.Mock())
+        self.scraper.current_month_index = 3
+        self.previous = mock.Mock(text='febrero')
+        selected = mock.Mock(text='marzo')
+        self.select = self.enterContext(mock.patch.object(dg_gastos, 'Select'))
+        self.select.return_value.options = [self.previous, selected]
+        self.select.return_value.first_selected_option = selected
+        self.find_dropdown = self.enterContext(
+            mock.patch.object(self.scraper.webdriver_wait, 'until'))
+
+    def test_persistent_click_failure_raises_after_three_attempts(self):
+        for exception in (ElementClickInterceptedException, StaleElementReferenceException):
+            with self.subTest(exception=exception.__name__):
+                self.previous.click.reset_mock()
+                self.find_dropdown.reset_mock()
+                failure = exception('click failed')
+                self.previous.click.side_effect = [failure] * 10 + [
+                    AssertionError('Month selection did not stop retrying')]
+
+                with self.assertRaisesRegex(RuntimeError, 'seleccionar el mes tras 3 intentos') as error:
+                    self.scraper.set_one_month_backward()
+
+                self.assertIs(error.exception.__cause__, failure)
+                self.assertEqual(self.previous.click.call_count, 3)
+                self.assertEqual(self.find_dropdown.call_count, 3)
+                self.assertEqual(self.scraper.current_month_index, 3)
+
+    def test_transient_click_failure_retries_and_updates_month(self):
+        self.previous.click.side_effect = StaleElementReferenceException()
+        initial_dropdown, refreshed_dropdown = mock.Mock(), mock.Mock()
+        self.find_dropdown.side_effect = [initial_dropdown, refreshed_dropdown]
+        refreshed_previous = mock.Mock(text='febrero')
+        refreshed_selected = mock.Mock(text='marzo')
+        refreshed_select = mock.Mock(options=[refreshed_previous, refreshed_selected],
+                                     first_selected_option=refreshed_selected)
+        self.select.side_effect = [self.select.return_value, refreshed_select]
+
+        self.assertTrue(self.scraper.set_one_month_backward())
+
+        self.previous.click.assert_called_once_with()
+        refreshed_previous.click.assert_called_once_with()
+        self.assertEqual(self.select.call_args_list,
+                         [mock.call(initial_dropdown), mock.call(refreshed_dropdown)])
+        self.assertEqual(self.find_dropdown.call_count, 2)
+        self.assertEqual(self.scraper.current_month_index, 2)
+
 
 if __name__ == '__main__':
     unittest.main()
