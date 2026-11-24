@@ -351,5 +351,59 @@ class MonthClickRetryTest(unittest.TestCase):
         self.assertEqual(self.scraper.current_month_index, 2)
 
 
+class YearStepTest(unittest.TestCase):
+
+    def test_year_dropdown_timeout_aborts_scrape(self):
+        driver = mock.Mock()
+        scraper = DeputyWebDriver(driver)
+        scraper.available_years = [2021, 2020]
+        scraper.webdriver_wait = mock.Mock()
+        timeout = TimeoutException('Year dropdown not found')
+        scraper.webdriver_wait.until.side_effect = timeout
+        section_has_data = iter((False, True))
+        years_read = []
+
+        def reset_dates():
+            scraper.there_is_more_data_to_scrap = next(section_has_data)
+
+        def read_consultancies():
+            years_read.append(scraper.current_year)
+            self.assertEqual(years_read, [2021], 'Scraper reread the same period')
+
+        with mock.patch.object(dg_gastos, 'get_driver', return_value=driver), \
+             mock.patch.object(dg_gastos, 'DeputyWebDriver', return_value=scraper), \
+             mock.patch.multiple(
+                 scraper,
+                 get_deputies_names_from_dropdown=mock.Mock(return_value=(['Deputy'], None)),
+                 _handle_select_to_change_deputy=mock.Mock(),
+                 get_deputy_name=mock.Mock(return_value='Deputy'),
+                 get_into_operational_costs_section=mock.Mock(),
+                 get_into_external_consultancies=mock.Mock(),
+                 _reset_dates_for_another_section=reset_dates,
+                 select_all_months_in_month_dropwdown=mock.Mock(),
+                 get_data_from_external_consultancies=read_consultancies):
+            with self.assertRaisesRegex(RuntimeError, 'No se pudo cambiar del año 2021 al año 2020') as error:
+                dg_gastos.main()
+
+        self.assertIs(error.exception.__cause__, timeout)
+
+    def test_month_refresh_timeout_after_year_selection_aborts_year_step(self):
+        scraper = DeputyWebDriver(mock.Mock())
+        scraper.available_years = [2021, 2020]
+        dropdown = mock.Mock()
+        timeout = TimeoutException('Month dropdown not found')
+        scraper.webdriver_wait = mock.Mock()
+        scraper.webdriver_wait.until.side_effect = [dropdown, timeout]
+
+        with mock.patch.object(dg_gastos, 'Select') as select:
+            with self.assertRaisesRegex(RuntimeError, 'No se pudo cambiar del año 2021 al año 2020') as error:
+                scraper.set_one_year_backward()
+
+        select.assert_called_once_with(dropdown)
+        select.return_value.select_by_visible_text.assert_called_once_with('2020')
+        self.assertEqual(scraper.current_year, 2021)
+        self.assertIs(error.exception.__cause__, timeout)
+
+
 if __name__ == '__main__':
     unittest.main()
