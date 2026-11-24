@@ -202,17 +202,25 @@ class DeputyWebDriver:
     def get_and_update_current_year(self, *, select_latest=False):
         """Read the available years and optionally select the newest one."""
         self._log('Obteniendo el año que aparece en la página...')
-        dropdown = self.webdriver_wait.until(_by_css_selector(YEAR_SELECTOR_CSS))
-        # example: 2018\n2019\n2020\n2021
-        # after map(int, example) -> [2018, 2019, 2020, 2021]
-        self.available_years = list(map(int, dropdown.text.split('\n')))
-        year_select = Select(dropdown)
-        if select_latest:
-            latest_year = max(self.available_years)
-            year_select.select_by_visible_text(str(latest_year))
-            self.current_year = latest_year
-        else:
-            self.current_year = int(year_select.first_selected_option.text)
+        find_year_dropdown = _by_css_selector(YEAR_SELECTOR_CSS)
+
+        def read_year(driver):
+            try:
+                dropdown = find_year_dropdown(driver)
+                if not dropdown:
+                    return False
+                years = list(map(int, dropdown.text.split('\n')))
+                year_select = Select(dropdown)
+                if select_latest:
+                    year = max(years)
+                    year_select.select_by_visible_text(str(year))
+                else:
+                    year = int(year_select.first_selected_option.text)
+                return years, year
+            except StaleElementReferenceException:
+                return False
+
+        self.available_years, self.current_year = self.webdriver_wait.until(read_year)
         self._log(f'Año actual actualizado a: {self.current_year}')
 
     def get_and_update_current_month(self):
