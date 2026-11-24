@@ -472,13 +472,8 @@ class DeputyWebDriver:
         self.get_and_update_current_month()
         self.there_is_more_data_to_scrap = True
 
-def main():
-    """
-    Init the webdriver, get the data of every deputy and once all data
-    has been collected, save a .csv file with this data
 
-    """
-    driver = get_driver()
+def _scrape_deputies(driver: RemoteWebDriver) -> None:
     webdriver = DeputyWebDriver(driver)
     deputies_names, _ = webdriver.get_deputies_names_from_dropdown()
     deputies_collected_data  = set()
@@ -522,6 +517,15 @@ def main():
 
         webdriver._log('Se terminaron de obtener datos de: '
                        f'{current_deputy_name}. Seguimos con...')
+
+
+def main():
+    driver = get_driver()
+    try:
+        _scrape_deputies(driver)
+    finally:
+        if driver is not None:
+            driver.quit()
 
 
 if __name__ == "__main__":

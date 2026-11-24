@@ -11,6 +11,7 @@ import unittest
 from unittest import mock
 
 from selenium import webdriver
+from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
 
@@ -30,6 +31,32 @@ def table(*rows):
     body = ''.join('<tr>' + ''.join(f'<td>{cell}</td>' for cell in row) + '</tr>'
                    for row in rows)
     return f'<table class="tabla"><tbody>{body}</tbody></table>'
+
+
+class ScraperBrowserLifecycleTest(unittest.TestCase):
+
+    def setUp(self):
+        self.driver = mock.Mock(spec=webdriver.Remote)
+        driver_patch = mock.patch.object(dg_gastos, 'get_driver', return_value=self.driver)
+        driver_patch.start()
+        self.addCleanup(driver_patch.stop)
+
+    def test_main_quits_driver_on_success(self):
+        with mock.patch.object(DeputyWebDriver, 'get_deputies_names_from_dropdown',
+                               return_value=([], None)):
+            dg_gastos.main()
+
+        self.driver.quit.assert_called_once_with()
+
+    def test_main_quits_driver_when_initial_navigation_fails(self):
+        error = WebDriverException('Initial navigation failed')
+        self.driver.get.side_effect = error
+
+        with self.assertRaises(WebDriverException) as raised:
+            dg_gastos.main()
+
+        self.assertIs(raised.exception, error)
+        self.driver.quit.assert_called_once_with()
 
 
 class DeputyWebDriverLocatorsTest(unittest.TestCase):
