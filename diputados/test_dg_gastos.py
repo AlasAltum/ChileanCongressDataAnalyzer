@@ -11,7 +11,7 @@ import unittest
 from unittest import mock
 
 from selenium import webdriver
-from selenium.common.exceptions import WebDriverException
+from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
 
@@ -236,6 +236,69 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
         self.assertFalse(scraper.there_is_more_data_to_scrap)
         self.assertFalse(scraper.set_one_month_backward())
 
+    def test_reads_consultancies_when_rows_load_after_the_table(self):
+        scraper = self.open_scraper_on(table())
+        row = ('Ver', '12', '01/03/2021', 'Juan Pérez', 'Informe legislativo', '$822.400')
+        self.driver.execute_script("""
+            const cells = arguments[0];
+            setTimeout(() => {
+                const row = document.querySelector('table.tabla tbody').insertRow();
+                cells.forEach(text => { row.insertCell().textContent = text; });
+            }, 750);
+        """, row)
+
+        scraper.get_data_from_external_consultancies()
+
+        self.assertEqual(dg_gastos.external_consultancies['Asesor'], ['Juan Pérez'])
+
+    def test_readers_leave_empty_months_empty(self):
+        for content in (NO_DATA, table()):
+            scraper = self.open_scraper_on(content)
+            for read, collected in (
+                (scraper.get_data_from_operational_costs_table, dg_gastos.operational_costs),
+                (scraper.get_data_from_external_consultancies, dg_gastos.external_consultancies),
+                (scraper.get_data_from_support_staff, dg_gastos.support_staff),
+            ):
+                with self.subTest(content=content, reader=read.__name__):
+                    read()
+                    self.assertFalse(any(collected.values()))
+
+    def test_readers_raise_when_page_has_no_table_or_empty_marker(self):
+        scraper = self.open_scraper_on(NO_DATA.replace('Los datos aún no han sido publicados',
+                                                       'Error al cargar la página'))
+        for read in (scraper.get_data_from_operational_costs_table,
+                     scraper.get_data_from_external_consultancies,
+                     scraper.get_data_from_support_staff):
+            with self.subTest(reader=read.__name__):
+                with self.assertRaises(TimeoutException):
+                    read()
+
+    def test_annual_consultancy_timeout_identifies_all_months(self):
+        scraper = self.open_scraper_on(
+            f'<select id="{dg_gastos.MONTH_SELECTOR_CSS[1:]}">'
+            '<option>Todos</option><option selected>marzo</option></select>')
+
+        scraper.select_all_months_in_month_dropwdown()
+
+        with self.assertRaisesRegex(TimeoutException, 'Florcita Alarcón Rojas, Todos de 2021'):
+            scraper.get_data_from_external_consultancies()
+
+    def test_readers_propagate_webdriver_errors(self):
+        scraper = self.open_scraper_on(
+            table(('Personal de apoyo', '1', 'Ana Soto', 'Secretaria', '$1.200.000', 'No', '')))
+        for read in (scraper.get_data_from_external_consultancies,
+                     scraper.get_data_from_support_staff):
+            with self.subTest(reader=read.__name__):
+                with mock.patch.object(self.driver, 'find_elements',
+                                       side_effect=WebDriverException('browser disconnected')):
+                    with self.assertRaisesRegex(WebDriverException, 'browser disconnected'):
+                        read()
+
+    def test_missing_support_staff_section_raises(self):
+        scraper = self.open_scraper_on(table())
+
+        with self.assertRaises(TimeoutException):
+            scraper.get_into_supporting_staff()
 
 if __name__ == '__main__':
     unittest.main()
