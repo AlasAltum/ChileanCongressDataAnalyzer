@@ -296,6 +296,10 @@ class DeputyWebDriver:
                     month.click()
                     if wait_for_refresh:
                         self._wait_for_postback(dropdown)
+                        refreshed_dropdown = self.webdriver_wait.until(_by_css_selector(MONTH_SELECTOR_CSS))
+                        loaded_month = Select(refreshed_dropdown).first_selected_option.text
+                        if _month_number(loaded_month) != month_number:
+                            raise ValueError(f'La página cargó {loaded_month} en vez de {MONTHS[month_number]}')
                 self.current_month_index = month_number
                 return True
             except (ElementClickInterceptedException, StaleElementReferenceException) as exc:

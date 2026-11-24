@@ -361,6 +361,24 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
         self.assertEqual(list(zip(staff['Anio'], staff['Mes'], staff['Nombre'])),
                          [(2026, 11, 'Beatriz Díaz'), (2026, 3, 'Carla Ruiz'), (2025, 3, 'Ana Soto')])
 
+    def test_staff_month_step_rejects_postback_with_different_month(self):
+        month_id = dg_gastos.MONTH_SELECTOR_CSS[1:]
+        returned_page = pathlib.Path(self.pages_dir.name, 'unchanged-month.html')
+        returned_page.write_text(
+            f'<select id="{month_id}"><option>marzo</option><option selected>abril</option></select>',
+            encoding='utf-8')
+        scraper = self.open_scraper_on(f'''
+            <select id="{month_id}" onchange="setTimeout(() => location.href = '{returned_page.name}', 250)">
+                <option>marzo</option><option selected>abril</option>
+            </select>
+        ''')
+        scraper.get_and_update_current_month()
+
+        with self.assertRaisesRegex(ValueError, 'abril en vez de marzo'):
+            scraper.set_one_month_backward(wait_for_refresh=True)
+
+        self.assertEqual(scraper.current_month_index, 4)
+
     def test_steps_through_sparse_month_options_and_stops_at_boundary(self):
         months = ['marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
                   'septiembre', 'octubre', 'noviembre']
