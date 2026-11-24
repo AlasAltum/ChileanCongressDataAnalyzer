@@ -224,26 +224,32 @@ class DeputyWebDriver:
         except Exception as e:
             return False
 
-    def set_one_month_backward(self) -> bool:
-        """Select the previous listed month or move to the previous year."""
-        if not self.there_is_more_data_to_scrap:
-            return False
-
+    def _select_month(self, *, last=False) -> bool:
         try:
             dropdown = self.webdriver_wait.until(_by_css_selector(MONTH_SELECTOR_CSS))
             month_select = Select(dropdown)
             options = month_select.options
-            position = options.index(month_select.first_selected_option)
-            if position > 0:
-                previous_month = options[position - 1]
-                month_number = MONTH_TEXT_TO_NUMBER[previous_month.text]
-                previous_month.click()
-                self.current_month_index = month_number
-                return True
-        except (ElementClickInterceptedException, StaleElementReferenceException):
-            return self.set_one_month_backward()
+            selected = month_select.first_selected_option
+            position = len(options) - 1 if last else options.index(selected) - 1
+            if position < 0:
+                return False
 
-        return self.set_one_year_backward()
+            month = options[position]
+            month_number = MONTH_TEXT_TO_NUMBER[month.text]
+            if month != selected:
+                month.click()
+            self.current_month_index = month_number
+            return True
+        except (ElementClickInterceptedException, StaleElementReferenceException):
+            return self._select_month(last=last)
+
+    def set_one_month_backward(self) -> bool:
+        """Select the previous listed month or the last listed month of the previous year."""
+        if not self.there_is_more_data_to_scrap:
+            return False
+        if self._select_month():
+            return True
+        return self.set_one_year_backward() and self._select_month(last=True)
 
     def _fast_check_if_there_is_data_section(self) -> bool:
         """
@@ -541,4 +547,3 @@ if __name__ == "__main__":
     except NoSuchWindowException:
         print('Se cerró el navegador')
         raise
-

@@ -143,6 +143,26 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
         self.assertFalse(scraper.there_is_more_data_to_scrap)
         self.assertEqual((selected_month(), scraper.current_month_index), ('marzo', 3))
 
+    def test_starts_previous_year_at_its_last_listed_month(self):
+        scraper = self.open_scraper_on(
+            f'<select id="{dg_gastos.YEAR_SELECTOR_CSS[1:]}">'
+            '<option>2025</option><option selected="selected">2026</option></select>'
+            f'<select id="{dg_gastos.MONTH_SELECTOR_CSS[1:]}"><option>marzo</option></select>')
+        self.driver.execute_script(
+            'const year = document.querySelector(arguments[0]);'
+            'const month = document.querySelector(arguments[1]);'
+            'year.addEventListener("change", () => {'
+            '    month.replaceChildren(new Option("febrero"), new Option("octubre"));'
+            '});',
+            dg_gastos.YEAR_SELECTOR_CSS, dg_gastos.MONTH_SELECTOR_CSS)
+        scraper._reset_dates_for_another_section()
+
+        self.assertTrue(scraper.set_one_month_backward())
+
+        dropdown = self.driver.find_element(By.CSS_SELECTOR, dg_gastos.MONTH_SELECTOR_CSS)
+        self.assertEqual(Select(dropdown).first_selected_option.text, 'octubre')
+        self.assertEqual((scraper.current_year, scraper.current_month_index), (2025, 10))
+
     def test_does_not_look_up_month_after_year_exhaustion(self):
         scraper = self.open_scraper_on(
             f'<select id="{dg_gastos.YEAR_SELECTOR_CSS[1:]}"><option>2026</option></select>'
