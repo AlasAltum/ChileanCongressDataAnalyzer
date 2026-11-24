@@ -222,6 +222,20 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
                                  f'{destination.as_uri()}?prmId=1009#ficha-diputados')
                 self.assertEqual(self.driver.title, name)
 
+    def test_retries_staff_navigation_when_the_consultancy_page_remains(self):
+        staff_page = pathlib.Path(self.pages_dir.name, 'supporting-staff.html')
+        staff_page.write_text('<title>Personal de apoyo</title>', encoding='utf-8')
+        staff_url = f'{staff_page.as_uri()}?prmId=1008'
+        scraper = self.open_scraper_on(
+            f'<a id="{dg_gastos.SUPPORT_STAFF_CSS[1:]}" href="{staff_page.name}">Personal de apoyo</a>')
+
+        with mock.patch.object(self.driver, 'get', wraps=self.driver.get,
+                               side_effect=[None, mock.DEFAULT]) as navigate:
+            scraper.get_into_supporting_staff()
+
+        self.assertEqual(navigate.call_args_list, [mock.call(staff_url), mock.call(staff_url)])
+        self.assertEqual(self.driver.current_url, staff_url)
+
     def test_detects_month_without_published_data(self):
         scraper = self.open_scraper_on(NO_DATA)
 
@@ -306,6 +320,78 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
 
         self.assertEqual(dg_gastos.operational_costs['Gastos'], ['TELEFONÍA'])
         self.assertEqual(dg_gastos.operational_costs['Montos'], ['$43.452'])
+
+    def test_support_staff_scrape_starts_at_latest_period(self):
+        def postback(page):
+            return f' onchange="setTimeout(() => location.href = \'{page}\', 250)"' if page else ''
+
+        def date_controls(*months, latest=False, year_page=None, month_page=None, selected_month=None):
+            selected_year = ' selected' if latest else ''
+            month_options = ''.join(
+                f'<option{" selected" if month == selected_month else ""}>{month}</option>'
+                for month in months)
+            return (
+                f'<select id="{dg_gastos.YEAR_SELECTOR_CSS[1:]}"{postback(year_page)}>'
+                f'<option>2025</option><option{selected_year}>2026</option></select>'
+                f'<select id="{dg_gastos.MONTH_SELECTOR_CSS[1:]}"{postback(month_page)}>{month_options}</select>')
+
+        def staff_table(name):
+            return table(('Personal de apoyo', '1', name, 'Secretaria', '$1.200.000', 'No', ''))
+
+        staff_link = f'<a id="{dg_gastos.SUPPORT_STAFF_CSS[1:]}" href="staff.html">Staff</a>'
+        pages = {
+            'costs.html': (
+                f'<select id="{dg_gastos.DEPUTIES_DROPDOWN_ID}"><option value="1009">Deputy</option></select>'
+                '<div class="rotulo">Deputy</div>'
+                f'<a id="{dg_gastos.OPERATIONAL_COSTS_CSS[1:]}" href="costs.html">Costs</a>'
+                f'<a id="{dg_gastos.EXTERNAL_CONSULTANCIES_CSS[1:]}" href="consultancies.html">Consultancies</a>'
+                + date_controls('marzo', latest=True, year_page='costs-old.html?prmId=1009') + NO_DATA),
+            'costs-old.html': (
+                f'<a id="{dg_gastos.EXTERNAL_CONSULTANCIES_CSS[1:]}" href="consultancies.html">Consultancies</a>'
+                + date_controls('marzo') + NO_DATA),
+            'consultancies.html': (
+                staff_link + date_controls('Todos', latest=True,
+                                           year_page='consultancies-old.html?prmId=1009') + NO_DATA),
+            'consultancies-old.html': staff_link + date_controls('Todos') + NO_DATA,
+            'staff.html': date_controls('marzo', year_page='staff-latest.html') + staff_table('Ana Soto'),
+            'staff-latest.html': (
+                date_controls('marzo', 'Noviembre', latest=True, year_page='staff.html',
+                              month_page='staff-november.html')
+                + staff_table('Carla Ruiz')),
+            'staff-november.html': (
+                date_controls('marzo', 'Noviembre', latest=True, selected_month='Noviembre',
+                              month_page='staff-latest.html')
+                + staff_table('Beatriz Díaz')),
+        }
+        for filename, content in pages.items():
+            pathlib.Path(self.pages_dir.name, filename).write_text(
+                PAGE.format(content=content), encoding='utf-8')
+        start = pathlib.Path(self.pages_dir.name, 'costs.html').as_uri()
+
+        with mock.patch.object(dg_gastos, 'FIRST_DIPUTY_URL', f'{start}?prmId=1009'):
+            dg_gastos._scrape_deputies(self.driver)
+
+        staff = dg_gastos.support_staff
+        self.assertEqual(list(zip(staff['Anio'], staff['Mes'], staff['Nombre'])),
+                         [(2026, 11, 'Beatriz Díaz'), (2026, 3, 'Carla Ruiz'), (2025, 3, 'Ana Soto')])
+
+    def test_staff_month_step_rejects_postback_with_different_month(self):
+        month_id = dg_gastos.MONTH_SELECTOR_CSS[1:]
+        returned_page = pathlib.Path(self.pages_dir.name, 'unchanged-month.html')
+        returned_page.write_text(
+            f'<select id="{month_id}"><option>marzo</option><option selected>abril</option></select>',
+            encoding='utf-8')
+        scraper = self.open_scraper_on(f'''
+            <select id="{month_id}" onchange="setTimeout(() => location.href = '{returned_page.name}', 250)">
+                <option>marzo</option><option selected>abril</option>
+            </select>
+        ''')
+        scraper.get_and_update_current_month()
+
+        with self.assertRaisesRegex(ValueError, 'abril en vez de marzo'):
+            scraper.set_one_month_backward(wait_for_refresh=True)
+
+        self.assertEqual(scraper.current_month_index, 4)
 
     def test_steps_through_sparse_month_options_and_stops_at_boundary(self):
         months = ['marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
@@ -468,9 +554,9 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
         reset_dates = scraper._reset_dates_for_another_section
         is_consultancies = iter((False, True, False))
 
-        def reset_dates_only_for_consultancies():
+        def reset_dates_only_for_consultancies(**options):
             if next(is_consultancies):
-                reset_dates()
+                reset_dates(**options)
             else:
                 scraper.there_is_more_data_to_scrap = False
 
