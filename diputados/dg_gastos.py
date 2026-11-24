@@ -526,8 +526,7 @@ def main():
         _scrape_deputies(driver)
     finally:
         try:
-            if driver is not None:
-                driver.quit()
+            driver.quit()
         except Exception:
             logging.getLogger(__name__).exception('No se pudo cerrar el navegador')
 
