@@ -236,6 +236,15 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
         self.assertEqual(dg_gastos.external_consultancies['Asesor'], ['Juan Pérez'])
         self.assertEqual(dg_gastos.external_consultancies['Monto'], ['$822.400'])
 
+    def test_reads_consultancies_wrapped_in_a_layout_table(self):
+        consultancies = table(('Ver', '12', '01/03/2021', 'Juan Pérez', 'Informe legislativo', '$822.400'))
+        scraper = self.open_scraper_on(f'<table><tr><td>{consultancies}</td></tr></table>')
+
+        scraper.get_data_from_external_consultancies()
+
+        self.assertEqual(dg_gastos.external_consultancies['Folio'], ['12'])
+        self.assertEqual(dg_gastos.external_consultancies['Monto'], ['$822.400'])
+
     def test_reads_consultancies_without_treating_nested_document_tables_as_records(self):
         documents = table(('<a href="report.pdf">Ver</a>', '', ''))
         scraper = self.open_scraper_on(

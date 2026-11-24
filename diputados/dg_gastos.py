@@ -36,7 +36,7 @@ SUPPORT_STAFF_CSS = '#ContentPlaceHolder1_ContentPlaceHolder1_btpeapo'
 NO_DATA_PARRAGRAPH_XPATH = '//div[@id="ContentPlaceHolder1_ContentPlaceHolder1_DetallePlaceHolder_nodata"]/p'
 TABLE_ROW_XPATH = '//table[@class="tabla"]/tbody/tr'
 DEPUTY_COST_TABLE_XPATH = '//table[@class="tabla"]/tbody'
-TOP_LEVEL_COST_TABLE_XPATH = '//table[@class="tabla" and not(ancestor::table)]/tbody'
+TOP_LEVEL_COST_TABLE_XPATH = '//table[@class="tabla" and not(ancestor::table[@class="tabla"])]/tbody'
 EMPTY_CONSULTANCIES_XPATH = (
     '//*[@id="ajax-container"]//div[@id="body" and @class="table-responsive"'
     ' and not(*) and not(normalize-space())]'
