@@ -13,6 +13,57 @@ The subfolder collected_data contains the results of the scrapped data. Please n
 
 The subfolder analysis_results will contain notebooks and queries with interesting data. We will use this in the future to make a page for transparency about politicians in Chile, crossing information between them.
 
+## Setup
+
+Install Python 3.11. From the repository root, create a virtual environment and
+install the Python dependencies:
+
+```sh
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+The notebook currently requires pandas 1.x. Keep the virtual environment active
+for the commands below.
+
+## Run the scraper
+
+Install Firefox and run the scraper in a desktop session where Firefox can open
+a window. Selenium Manager can download geckodriver automatically; if it cannot
+download the driver, install a compatible geckodriver and put it on your
+`PATH`. Leave the `DRIVER` environment variable unset to use Firefox; browser
+overrides do not currently work.
+
+Start from the repository root. The scraper writes to `collected_data/`
+relative to its working directory:
+
+```sh
+unset DRIVER
+cd diputados
+python dg_gastos.py
+```
+
+A complete scrape can take several hours and overwrites the CSVs in
+`diputados/collected_data/`. The current scraper can stop at a
+`find_element_by_*` call because recent Selenium 4 releases removed those
+methods.
+
+## Run the analysis notebook
+
+The notebook can use the CSVs included in the repository, so you do not need to
+run the scraper first. Start from the repository root and run the notebook from
+its own directory so it can read `../collected_data/`:
+
+```sh
+cd diputados/analysis_results
+jupyter nbconvert --to notebook --execute --allow-errors analysis.ipynb --output analysis.executed.ipynb
+```
+
+Open `analysis.executed.ipynb` to inspect the results. `--allow-errors` keeps
+the output from working cells and records errors from unfinished cells without
+overwriting the source notebook.
+
 ## Daily expense refresh
 
 Run the following on a persistent host with Python 3.11, Firefox, and a working graphical session. The working configuration uses Selenium 4.54.0 with Selenium Manager providing geckodriver, and pandas 1.5.3 (the analysis uses pandas 1.x).
