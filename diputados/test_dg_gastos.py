@@ -245,6 +245,45 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
         self.assertEqual(dg_gastos.support_staff['Nombre'], ['Ana Soto'])
         self.assertEqual(dg_gastos.support_staff['Sueldo'], ['$1.200.000'])
 
+    def test_readers_reject_malformed_rows_before_collecting_data(self):
+        for reader, section, collected, row in (
+            ('get_data_from_operational_costs_table', 'Costos operacionales',
+             dg_gastos.operational_costs, ('TELEFONÍA', '$43.452')),
+            ('get_data_from_external_consultancies', 'Asesorías externas',
+             dg_gastos.external_consultancies,
+             ('Ver', '12', '01/03/2021', 'Juan Pérez', 'Informe legislativo', '$822.400')),
+            ('get_data_from_support_staff', 'Personal de apoyo',
+             dg_gastos.support_staff,
+             ('Personal de apoyo', '1', 'Ana Soto', 'Secretaria', '$1.200.000', 'No', '')),
+        ):
+            for malformed in (row[:-1], (*row, 'Celda inesperada')):
+                with self.subTest(reader=reader, cells=len(malformed)):
+                    scraper = self.open_scraper_on(table(row, malformed, row))
+                    with self.assertRaisesRegex(
+                            ValueError, f'{section}.*fila 2.*{len(row)}.*{len(malformed)}'):
+                        getattr(scraper, reader)()
+                    self.assertFalse(any(collected.values()))
+
+    def test_operational_costs_rejects_header_cells_in_data_rows(self):
+        for cells in ('<td>$43.452</td><th>Encabezado</th>', '<th>Encabezado</th>'):
+            with self.subTest(cells=cells):
+                scraper = self.open_scraper_on(table(('TRASLACIÓN', '$10.000')).replace(
+                    '</tbody>', f'<tr><td>TELEFONÍA</td>{cells}</tr></tbody>'))
+
+                with self.assertRaisesRegex(ValueError, 'Costos operacionales.*fila 2.*celdas td'):
+                    scraper.get_data_from_operational_costs_table()
+                self.assertFalse(any(dg_gastos.operational_costs.values()))
+
+    def test_reads_operational_costs_with_unlabelled_site_column(self):
+        content = table(('TELEFONÍA', '$43.452', '&nbsp;')).replace(
+            '<tbody>', '<thead><tr><th>Gastos</th><th>Monto</th><th>&nbsp;</th></tr></thead><tbody>')
+        scraper = self.open_scraper_on(content)
+
+        scraper.get_data_from_operational_costs_table()
+
+        self.assertEqual(dg_gastos.operational_costs['Gastos'], ['TELEFONÍA'])
+        self.assertEqual(dg_gastos.operational_costs['Montos'], ['$43.452'])
+
     def test_steps_through_sparse_month_options_and_stops_at_boundary(self):
         months = ['marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
                   'septiembre', 'octubre', 'noviembre']
