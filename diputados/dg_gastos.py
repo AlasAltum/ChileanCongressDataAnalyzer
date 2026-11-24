@@ -73,7 +73,7 @@ MONTH_TEXT_TO_NUMBER = {
     'diciembre': 12,
 }
 WAITING_TIME = 2
-# Year changes post the whole form; camara.cl took ~45 s to answer one.
+# Period changes post the whole form; camara.cl took ~45 s to answer one.
 POSTBACK_TIMEOUT = 120
 
 operational_costs = {
@@ -258,7 +258,7 @@ class DeputyWebDriver:
         except Exception as e:
             raise RuntimeError(f'No se pudo cambiar del año {current_year} al año {previous_year}') from e
 
-    def _select_month(self, *, last=False) -> bool:
+    def _select_month(self, *, last=False, wait_for_refresh=False) -> bool:
         for attempt in range(1, MAX_MONTH_SELECTION_ATTEMPTS + 1):
             try:
                 dropdown = self.webdriver_wait.until(_by_css_selector(MONTH_SELECTOR_CSS))
@@ -270,24 +270,34 @@ class DeputyWebDriver:
                     return False
 
                 month = options[position]
-                month_number = MONTH_TEXT_TO_NUMBER[month.text]
-                if month != selected:
+                month_text = month.text
+                month_number = MONTH_TEXT_TO_NUMBER[month_text]
+                changed = month != selected
+                if changed:
                     month.click()
-                self.current_month_index = month_number
-                return True
             except (ElementClickInterceptedException, StaleElementReferenceException) as exc:
                 if attempt == MAX_MONTH_SELECTION_ATTEMPTS:
                     raise RuntimeError(
                         f'No se pudo seleccionar el mes tras {attempt} intentos (año {self.current_year})'
                     ) from exc
+            else:
+                if changed and wait_for_refresh:
+                    self._wait_for_postback(dropdown)
+                    loaded_dropdown = self.webdriver_wait.until(_by_css_selector(MONTH_SELECTOR_CSS))
+                    loaded_month = Select(loaded_dropdown).first_selected_option.text
+                    if loaded_month != month_text:
+                        raise ValueError(f'La página cargó el mes {loaded_month} en vez de {month_text}')
+                self.current_month_index = month_number
+                return True
 
-    def set_one_month_backward(self) -> bool:
+    def set_one_month_backward(self, *, wait_for_refresh=False) -> bool:
         """Select the previous listed month or the last listed month of the previous year."""
         if not self.there_is_more_data_to_scrap:
             return False
-        if self._select_month():
+        if self._select_month(wait_for_refresh=wait_for_refresh):
             return True
-        return self.set_one_year_backward() and self._select_month(last=True)
+        return self.set_one_year_backward() and self._select_month(
+            last=True, wait_for_refresh=wait_for_refresh)
 
     def _fast_check_if_there_is_data_section(self, *, empty_panel_xpath=None) -> bool:
         """Wait for the data table or a recognized no-data state."""
@@ -497,7 +507,7 @@ def _scrape_deputies(driver: RemoteWebDriver) -> None:
         webdriver._reset_dates_for_another_section()
         while webdriver.there_is_more_data_to_scrap: 
             webdriver.get_data_from_operational_costs_table()
-            webdriver.set_one_month_backward()
+            webdriver.set_one_month_backward(wait_for_refresh=True)
         
         webdriver._log('Se terminó de obtener costos operacionales de '
                        f'{current_deputy_name}, pasando a asesorías externas...')

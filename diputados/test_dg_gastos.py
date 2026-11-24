@@ -307,6 +307,66 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
         self.assertEqual(dg_gastos.operational_costs['Gastos'], ['TELEFONÍA'])
         self.assertEqual(dg_gastos.operational_costs['Montos'], ['$43.452'])
 
+    def test_operational_costs_reads_each_month_after_its_postback(self):
+        def month_page(selected_month, rows):
+            options = ''.join(
+                f'<option value="{number}"{" selected" if number == selected_month else ""}>'
+                f'{dg_gastos.MONTHS[number]}</option>'
+                for number in range(1, 5))
+            return (
+                f'<select id="{dg_gastos.YEAR_SELECTOR_CSS[1:]}"><option>2026</option></select>'
+                f'<select id="{dg_gastos.MONTH_SELECTOR_CSS[1:]}" onchange="'
+                'const month = this.value; '
+                f'setTimeout(() => {{ location.href = `costs_${{month}}.html`; }}, '
+                f'{(dg_gastos.WAITING_TIME + 1) * 1000})">{options}</select>'
+                + rows)
+
+        for month, rows in ((1, table(('TELEFONÍA', '$100'))),
+                            (2, table(('TELEFONÍA', '$200'))),
+                            (3, NO_DATA)):
+            pathlib.Path(self.pages_dir.name, f'costs_{month}.html').write_text(
+                PAGE.format(content=month_page(month, rows)), encoding='utf-8')
+        scraper = self.open_scraper_on(month_page(4, table(('TELEFONÍA', '$400'))))
+        reset_dates = scraper._reset_dates_for_another_section
+        is_operational_costs = iter((True, False, False))
+
+        def reset_dates_only_for_operational_costs(**kwargs):
+            if next(is_operational_costs):
+                reset_dates(**kwargs)
+            else:
+                scraper.there_is_more_data_to_scrap = False
+
+        with mock.patch.object(dg_gastos, 'DeputyWebDriver', return_value=scraper), \
+             mock.patch.multiple(
+                 scraper,
+                 get_deputies_from_dropdown=mock.Mock(return_value=[('Deputy', '1008')]),
+                 _handle_select_to_change_deputy=mock.Mock(),
+                 get_deputy_name=mock.Mock(return_value='Deputy'),
+                 get_into_operational_costs_section=mock.Mock(),
+                 get_into_external_consultancies=mock.Mock(),
+                 get_into_supporting_staff=mock.Mock(),
+                 _reset_dates_for_another_section=reset_dates_only_for_operational_costs):
+            dg_gastos._scrape_deputies(self.driver)
+
+        self.assertEqual(list(zip(dg_gastos.operational_costs['Mes'],
+                                  dg_gastos.operational_costs['Montos'])),
+                         [(4, '$400'), (2, '$200'), (1, '$100')])
+
+    def test_month_step_rejects_a_postback_returning_a_different_month(self):
+        options = '<option>febrero</option><option selected>marzo</option>'
+        month_id = dg_gastos.MONTH_SELECTOR_CSS[1:]
+        pathlib.Path(self.pages_dir.name, 'same_month.html').write_text(
+            PAGE.format(content=f'<select id="{month_id}">{options}</select>'),
+            encoding='utf-8')
+        scraper = self.open_scraper_on(
+            f'<select id="{month_id}" onchange="location.href = \'same_month.html\'">'
+            f'{options}</select>')
+
+        with self.assertRaisesRegex(ValueError, 'La página cargó el mes marzo en vez de febrero'):
+            scraper.set_one_month_backward(wait_for_refresh=True)
+
+        self.assertEqual(scraper.current_month_index, 3)
+
     def test_steps_through_sparse_month_options_and_stops_at_boundary(self):
         months = ['marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
                   'septiembre', 'octubre', 'noviembre']
