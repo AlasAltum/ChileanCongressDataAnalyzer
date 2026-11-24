@@ -236,6 +236,29 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
         self.assertEqual(dg_gastos.external_consultancies['Asesor'], ['Juan Pérez'])
         self.assertEqual(dg_gastos.external_consultancies['Monto'], ['$822.400'])
 
+    def test_reads_consultancies_wrapped_in_a_layout_table(self):
+        consultancies = table(('Ver', '12', '01/03/2021', 'Juan Pérez', 'Informe legislativo', '$822.400'))
+        scraper = self.open_scraper_on(f'<table><tr><td>{consultancies}</td></tr></table>')
+
+        scraper.get_data_from_external_consultancies()
+
+        self.assertEqual(dg_gastos.external_consultancies['Folio'], ['12'])
+        self.assertEqual(dg_gastos.external_consultancies['Monto'], ['$822.400'])
+
+    def test_reads_consultancies_without_treating_nested_document_tables_as_records(self):
+        documents = table(('<a href="report.pdf">Ver</a>', '', ''))
+        scraper = self.open_scraper_on(
+            table((documents, '3639', 'Jan 2026', 'FUNDACION JAIME GUZMAN', 'Asesoría', '$650.000'),
+                  ('Ver', '3640', 'Jan 2026', 'Otro asesor', 'Informe', '$822.400')))
+
+        scraper.get_data_from_external_consultancies()
+
+        self.assertEqual(dg_gastos.external_consultancies['Doc'], ['Ver', 'Ver'])
+        self.assertEqual(dg_gastos.external_consultancies['Folio'], ['3639', '3640'])
+        self.assertEqual(dg_gastos.external_consultancies['Asesor'],
+                         ['FUNDACION JAIME GUZMAN', 'Otro asesor'])
+        self.assertEqual(dg_gastos.external_consultancies['Monto'], ['$650.000', '$822.400'])
+
     def test_reads_support_staff_table(self):
         scraper = self.open_scraper_on(
             table(('Personal de apoyo', '1', 'Ana Soto', 'Secretaria', '$1.200.000', 'No', '')))
