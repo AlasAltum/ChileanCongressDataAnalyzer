@@ -26,6 +26,7 @@ FIRST_DIPUTY_URL = 'https://www.camara.cl/diputados/detalle/gastosoperacionales.
 DIPUTY_SELECTOR_CSS = '#ContentPlaceHolder1_ContentPlaceHolder1_ddlDiputados'
 YEAR_SELECTOR_CSS = '#ContentPlaceHolder1_ContentPlaceHolder1_DetallePlaceHolder_ddlAno'
 MONTH_SELECTOR_CSS = '#ContentPlaceHolder1_ContentPlaceHolder1_DetallePlaceHolder_ddlMes'
+MAX_MONTH_SELECTION_ATTEMPTS = 3
 DEPUTIES_DROPDOWN_ID = 'ContentPlaceHolder1_ContentPlaceHolder1_ddlDiputados'
 CURRENT_YEAR_CSS = 'ContentPlaceHolder1_ContentPlaceHolder1_DetallePlaceHolder_ddlAno'
 OPERATIONAL_COSTS_CSS = '#ContentPlaceHolder1_ContentPlaceHolder1_btGasop'
@@ -225,23 +226,27 @@ class DeputyWebDriver:
             return False
 
     def _select_month(self, *, last=False) -> bool:
-        try:
-            dropdown = self.webdriver_wait.until(_by_css_selector(MONTH_SELECTOR_CSS))
-            month_select = Select(dropdown)
-            options = month_select.options
-            selected = month_select.first_selected_option
-            position = len(options) - 1 if last else options.index(selected) - 1
-            if position < 0:
-                return False
+        for attempt in range(1, MAX_MONTH_SELECTION_ATTEMPTS + 1):
+            try:
+                dropdown = self.webdriver_wait.until(_by_css_selector(MONTH_SELECTOR_CSS))
+                month_select = Select(dropdown)
+                options = month_select.options
+                selected = month_select.first_selected_option
+                position = len(options) - 1 if last else options.index(selected) - 1
+                if position < 0:
+                    return False
 
-            month = options[position]
-            month_number = MONTH_TEXT_TO_NUMBER[month.text]
-            if month != selected:
-                month.click()
-            self.current_month_index = month_number
-            return True
-        except (ElementClickInterceptedException, StaleElementReferenceException):
-            return self._select_month(last=last)
+                month = options[position]
+                month_number = MONTH_TEXT_TO_NUMBER[month.text]
+                if month != selected:
+                    month.click()
+                self.current_month_index = month_number
+                return True
+            except (ElementClickInterceptedException, StaleElementReferenceException) as exc:
+                if attempt == MAX_MONTH_SELECTION_ATTEMPTS:
+                    raise RuntimeError(
+                        f'No se pudo seleccionar el mes tras {attempt} intentos (año {self.current_year})'
+                    ) from exc
 
     def set_one_month_backward(self) -> bool:
         """Select the previous listed month or the last listed month of the previous year."""
