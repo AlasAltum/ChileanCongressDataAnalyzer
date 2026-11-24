@@ -321,6 +321,79 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
         self.assertEqual(dg_gastos.operational_costs['Gastos'], ['TELEFONÍA'])
         self.assertEqual(dg_gastos.operational_costs['Montos'], ['$43.452'])
 
+    def test_operational_costs_reads_each_month_after_its_postback(self):
+        def month_page(selected_month, rows):
+            options = ''.join(
+                f'<option value="{number}"{" selected" if number == selected_month else ""}>'
+                f'{dg_gastos.MONTHS[number]}</option>'
+                for number in range(1, 5))
+            return (
+                f'<select id="{dg_gastos.YEAR_SELECTOR_CSS[1:]}"><option>2026</option></select>'
+                f'<select id="{dg_gastos.MONTH_SELECTOR_CSS[1:]}" onchange="'
+                'const month = this.value; '
+                f'setTimeout(() => {{ location.href = `costs_${{month}}.html`; }}, '
+                f'{(dg_gastos.WAITING_TIME + 1) * 1000})">{options}</select>'
+                + rows)
+
+        for month, rows in ((1, table(('TELEFONÍA', '$100'))),
+                            (2, table(('TELEFONÍA', '$200'))),
+                            (3, NO_DATA)):
+            pathlib.Path(self.pages_dir.name, f'costs_{month}.html').write_text(
+                PAGE.format(content=month_page(month, rows)), encoding='utf-8')
+        scraper = self.open_scraper_on(month_page(4, table(('TELEFONÍA', '$400'))))
+        reset_dates = scraper._reset_dates_for_another_section
+        is_operational_costs = iter((True, False, False))
+
+        def reset_dates_only_for_operational_costs(**kwargs):
+            if next(is_operational_costs):
+                reset_dates(**kwargs)
+            else:
+                scraper.there_is_more_data_to_scrap = False
+
+        with mock.patch.object(dg_gastos, 'DeputyWebDriver', return_value=scraper), \
+             mock.patch.multiple(
+                 scraper,
+                 get_deputies_from_dropdown=mock.Mock(return_value=[('Deputy', '1008')]),
+                 _handle_select_to_change_deputy=mock.Mock(),
+                 get_deputy_name=mock.Mock(return_value='Deputy'),
+                 get_into_operational_costs_section=mock.Mock(),
+                 get_into_external_consultancies=mock.Mock(),
+                 get_into_supporting_staff=mock.Mock(),
+                 _reset_dates_for_another_section=reset_dates_only_for_operational_costs):
+            dg_gastos._scrape_deputies(self.driver)
+
+        self.assertEqual(list(zip(dg_gastos.operational_costs['Mes'],
+                                  dg_gastos.operational_costs['Montos'])),
+                         [(4, '$400'), (2, '$200'), (1, '$100')])
+
+    def test_retries_month_confirmation_without_selecting_another_month(self):
+        def month_page(selected_month):
+            options = ''.join(
+                f'<option value="{month}"{" selected" if month == selected_month else ""}>'
+                f'{dg_gastos.MONTHS[month]}</option>' for month in (1, 2, 3))
+            return (f'<select id="{dg_gastos.MONTH_SELECTOR_CSS[1:]}"'
+                    ' onchange="location.href = `confirm_${this.value}.html`">'
+                    f'{options}</select>')
+
+        for month in (1, 2):
+            pathlib.Path(self.pages_dir.name, f'confirm_{month}.html').write_text(
+                PAGE.format(content=month_page(month)), encoding='utf-8')
+        scraper = self.open_scraper_on(month_page(3))
+        replaced = False
+
+        def select(dropdown):
+            nonlocal replaced
+            if not replaced and self.driver.current_url.endswith('confirm_2.html'):
+                replaced = True
+                raise StaleElementReferenceException()
+            return Select(dropdown)
+
+        with mock.patch.object(dg_gastos, 'Select', side_effect=select):
+            self.assertTrue(scraper.set_one_month_backward(wait_for_refresh=True))
+
+        self.assertTrue(replaced)
+        self.assertEqual(scraper.current_month_index, 2)
+
     def test_support_staff_scrape_starts_at_latest_period(self):
         def postback(page):
             return f' onchange="setTimeout(() => location.href = \'{page}\', 250)"' if page else ''
@@ -437,23 +510,28 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
         self.assertEqual(scraper.current_year, 2026)
 
     def test_starts_previous_year_at_its_last_listed_month(self):
+        year_id = dg_gastos.YEAR_SELECTOR_CSS[1:]
+        month_id = dg_gastos.MONTH_SELECTOR_CSS[1:]
+        year_2025 = f'<select id="{year_id}"><option selected>2025</option><option>2026</option></select>'
         pathlib.Path(self.pages_dir.name, 'year_2025.html').write_text(PAGE.format(content=(
-            f'<select id="{dg_gastos.YEAR_SELECTOR_CSS[1:]}">'
-            '<option selected="selected">2025</option><option>2026</option></select>'
-            f'<select id="{dg_gastos.MONTH_SELECTOR_CSS[1:]}">'
-            '<option>febrero</option><option>octubre</option></select>')), encoding='utf-8')
+            year_2025
+            + f'<select id="{month_id}" onchange="setTimeout(() => location.href = \'oct_2025.html\', 750)">'
+            '<option>febrero</option><option>octubre</option></select>'
+            + table(('TELEFONÍA', '$200')))), encoding='utf-8')
+        pathlib.Path(self.pages_dir.name, 'oct_2025.html').write_text(PAGE.format(content=(
+            year_2025 + f'<select id="{month_id}"><option>febrero</option><option selected>octubre</option></select>'
+            + table(('TELEFONÍA', '$1000')))), encoding='utf-8')
         scraper = self.open_scraper_on(
-            f'<select id="{dg_gastos.YEAR_SELECTOR_CSS[1:]}"'
-            ' onchange="location.href = \'year_2025.html\'">'
-            '<option>2025</option><option selected="selected">2026</option></select>'
-            f'<select id="{dg_gastos.MONTH_SELECTOR_CSS[1:]}"><option>marzo</option></select>')
+            f'<select id="{year_id}" onchange="setTimeout(() => location.href = \'year_2025.html\', 750)">'
+            '<option>2025</option><option selected>2026</option></select>'
+            f'<select id="{month_id}"><option>marzo</option></select>')
         scraper._reset_dates_for_another_section()
 
-        self.assertTrue(scraper.set_one_month_backward())
+        self.assertTrue(scraper.set_one_month_backward(wait_for_refresh=True))
+        scraper.get_data_from_operational_costs_table()
 
-        dropdown = self.driver.find_element(By.CSS_SELECTOR, dg_gastos.MONTH_SELECTOR_CSS)
-        self.assertEqual(Select(dropdown).first_selected_option.text, 'octubre')
-        self.assertEqual((scraper.current_year, scraper.current_month_index), (2025, 10))
+        costs = dg_gastos.operational_costs
+        self.assertEqual(list(zip(costs['Anio'], costs['Mes'], costs['Montos'])), [(2025, 10, '$1000')])
 
     def test_does_not_look_up_month_after_year_exhaustion(self):
         scraper = self.open_scraper_on(
