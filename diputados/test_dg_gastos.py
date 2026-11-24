@@ -14,6 +14,7 @@ from selenium.common.exceptions import ElementClickInterceptedException, StaleEl
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.common.by import By
+from selenium.webdriver.remote.command import Command
 from selenium.webdriver.support.ui import Select
 
 import dg_gastos
@@ -146,6 +147,60 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
 
         self.assertEqual(self.driver.current_url, f'{destination.as_uri()}#ficha-diputados')
         self.assertEqual(self.driver.title, 'Gastos operacionales')
+
+    def test_switches_deputies_without_rereading_roster(self):
+        scraper = self.open_scraper_on(f'''
+            <select id="{dg_gastos.DEPUTIES_DROPDOWN_ID}"
+                    onchange="this.replaceWith(this.cloneNode(true));
+                              document.title = this.value">
+                <option value="1008">Jorge Rathgeb</option>
+                <option value="1186">Ignacio Achurra</option>
+                <option value="803">René Alinco</option>
+            </select>
+        ''')
+
+        with mock.patch.object(self.driver, 'execute', wraps=self.driver.execute) as execute:
+            deputies = scraper.get_deputies_from_dropdown()
+            self.assertEqual(deputies, [('Jorge Rathgeb', '1008'),
+                                        ('Ignacio Achurra', '1186'),
+                                        ('René Alinco', '803')])
+            for _, deputy_id in deputies[1:]:
+                scraper._handle_select_to_change_deputy(deputy_id)
+                self.assertEqual(self.driver.title, deputy_id)
+
+        commands = [call.args[0] for call in execute.call_args_list]
+        self.assertNotIn(Command.GET_ELEMENT_TEXT, commands)
+        roster_reads = [call for call in execute.call_args_list
+                        if call.args[0] == Command.W3C_EXECUTE_SCRIPT
+                        and 'arguments[0].options' in call.args[1]['script']]
+        self.assertEqual(len(roster_reads), 1)
+
+    def test_switches_deputies_from_supporting_staff_by_cached_id(self):
+        staff_page = pathlib.Path(self.pages_dir.name, 'supporting-staff.html')
+        staff_page.write_text(f'''
+            <title>Personal de apoyo</title>
+            <select id="{dg_gastos.DEPUTIES_DROPDOWN_ID}" onchange="document.title = this.value">
+                <option value="1008">Jorge Rathgeb</option>
+                <option value="803">René Alinco</option>
+                <option value="1186">Ignacio Achurra</option>
+            </select>
+        ''', encoding='utf-8')
+        scraper = self.open_scraper_on(f'''
+            <a id="ContentPlaceHolder1_ContentPlaceHolder1_btpeapo"
+               href="{staff_page.name}">Personal de apoyo</a>
+            <select id="{dg_gastos.DEPUTIES_DROPDOWN_ID}">
+                <option value="1008">Jorge Rathgeb</option>
+                <option value="1186">Ignacio Achurra</option>
+                <option value="803">René Alinco</option>
+            </select>
+        ''')
+        _, deputy_id = scraper.get_deputies_from_dropdown()[1]
+
+        self.assertTrue(scraper.get_into_supporting_staff())
+        self.assertEqual(self.driver.title, 'Personal de apoyo')
+        scraper._handle_select_to_change_deputy(deputy_id)
+
+        self.assertEqual(self.driver.title, '1186')
 
     def test_detects_month_without_published_data(self):
         scraper = self.open_scraper_on(NO_DATA)
