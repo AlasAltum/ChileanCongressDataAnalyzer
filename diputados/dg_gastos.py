@@ -300,7 +300,7 @@ class DeputyWebDriver:
         return section == 'table'
 
     def _read_table_cells(self, section, width, *, allow_unlabelled_column=False):
-        bodies = self.driver.find_elements(By.XPATH, DEPUTY_COST_TABLE_XPATH)
+        bodies = self.driver.find_elements(By.XPATH, '//table[@class="tabla" and not(ancestor::table)]/tbody')
         tables = self.driver.execute_script("""
             return arguments[0].map(body => ({
                 headers: Array.from(body.parentElement.tHead?.rows[0]?.cells ?? []),
