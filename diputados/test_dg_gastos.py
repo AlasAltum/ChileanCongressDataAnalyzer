@@ -48,6 +48,18 @@ class ScraperBrowserLifecycleTest(unittest.TestCase):
 
         self.driver.quit.assert_called_once_with()
 
+    def test_main_logs_quit_failure_without_interrupting_success(self):
+        error = OSError('Could not stop geckodriver')
+        self.driver.quit.side_effect = error
+
+        with mock.patch.object(DeputyWebDriver, 'get_deputies_names_from_dropdown',
+                               return_value=([], None)):
+            with self.assertLogs(dg_gastos.__name__, level='ERROR') as logs:
+                dg_gastos.main()
+
+        self.assertIs(logs.records[0].exc_info[1], error)
+        self.driver.quit.assert_called_once_with()
+
     def test_main_quits_driver_when_initial_navigation_fails(self):
         error = WebDriverException('Initial navigation failed')
         self.driver.get.side_effect = error

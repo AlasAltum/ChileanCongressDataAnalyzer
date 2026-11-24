@@ -2,6 +2,7 @@
 data getter: información de gastos de cada diputado
 @Author: AlasAltum
 """
+import logging
 import re
 import pandas as pd
 import time
@@ -524,8 +525,11 @@ def main():
     try:
         _scrape_deputies(driver)
     finally:
-        if driver is not None:
-            driver.quit()
+        try:
+            if driver is not None:
+                driver.quit()
+        except Exception:
+            logging.getLogger(__name__).exception('No se pudo cerrar el navegador')
 
 
 if __name__ == "__main__":
