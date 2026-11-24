@@ -58,7 +58,7 @@ MONTHS = (
     'diciembre',
 )
 MONTH_TEXT_TO_NUMBER = {
-    'Todos': 0,
+    'todos': 0,
     'enero': 1,
     'febrero': 2,
     'marzo': 3,
@@ -227,7 +227,7 @@ class DeputyWebDriver:
         self._log('Obteniendo el mes que aparece en la página...')
         dropdown = self.webdriver_wait.until(_by_css_selector(MONTH_SELECTOR_CSS))
         month = Select(dropdown).first_selected_option.text
-        self.current_month_index = MONTH_TEXT_TO_NUMBER[month]
+        self.current_month_index = MONTH_TEXT_TO_NUMBER[month.lower()]
         self._log(f'Mes actual: {month}')
 
     def _wait_for_postback(self, element_on_previous_page) -> None:
@@ -281,7 +281,7 @@ class DeputyWebDriver:
                     return False
 
                 month = options[position]
-                month_number = MONTH_TEXT_TO_NUMBER[month.text]
+                month_number = MONTH_TEXT_TO_NUMBER[month.text.lower()]
                 if month != selected:
                     month.click()
                 self.current_month_index = month_number
@@ -398,7 +398,7 @@ class DeputyWebDriver:
             dropdown_month_select = Select(dropdown_month)
             month = dropdown_month_select.options[0].text
             dropdown_month_select.select_by_index(0)
-            self.current_month_index = MONTH_TEXT_TO_NUMBER[month]
+            self.current_month_index = MONTH_TEXT_TO_NUMBER[month.lower()]
         except StaleElementReferenceException:
             self.select_all_months_in_month_dropwdown()
 

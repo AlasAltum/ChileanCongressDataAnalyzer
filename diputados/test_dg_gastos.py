@@ -327,7 +327,7 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
             'consultancies.html': (
                 f'<a id="{dg_gastos.SUPPORT_STAFF_CSS[1:]}" href="staff.html">Staff</a>'
                 + date_controls('Todos', latest=True) + NO_DATA),
-            'staff.html': date_controls('marzo', 'noviembre') + table(staff_row),
+            'staff.html': date_controls('marzo', 'Noviembre') + table(staff_row),
         }
         for filename, content in pages.items():
             pathlib.Path(self.pages_dir.name, filename).write_text(
