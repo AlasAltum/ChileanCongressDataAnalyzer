@@ -127,27 +127,24 @@ class DeputyWebDriver:
         # self.logger.log(level=0,msg=log_msg)
         print(log_msg)
 
-    def get_deputies_names_from_dropdown(self) -> tuple([list[str], Select]):
+    def get_deputies_from_dropdown(self) -> list[tuple[str, str]]:
         self._log('Obteniendo nombres de los diputados.')
-        all_deputies_names = []
         deputies_dropdown = self.webdriver_wait.until(_by_id(DEPUTIES_DROPDOWN_ID))
-        all_deputies = Select(deputies_dropdown)
-
-        for deputy_name in all_deputies.options:
-            all_deputies_names.append(deputy_name.text)
-
-        self._log(f'Se obtuvieron {len(all_deputies_names)} nombres.')
-        return all_deputies_names, all_deputies
+        deputies = self.driver.execute_script(
+            'return Array.from(arguments[0].options, option => [option.text, option.value]);',
+            deputies_dropdown)
+        self._log(f'Se obtuvieron {len(deputies)} nombres.')
+        return [tuple(deputy) for deputy in deputies]
 
 
-    def _handle_select_to_change_deputy(self, index_to_select):
+    def _handle_select_to_change_deputy(self, deputy_id: str):
         """
         When changing between deputies, sometimes appear some
         exceptions, so we need to repeat them
         """
         try:
-            _, deputies_select = self.get_deputies_names_from_dropdown()
-            deputies_select.select_by_index(index_to_select)
+            deputies_dropdown = self.webdriver_wait.until(_by_id(DEPUTIES_DROPDOWN_ID))
+            Select(deputies_dropdown).select_by_value(deputy_id)
 
         # If we have an error, repeat after some time
         except ElementClickInterceptedException:
@@ -155,7 +152,7 @@ class DeputyWebDriver:
             TIME_TO_AVOID_CLICK_INTERCEPTION = 2.0
             time.sleep(TIME_TO_AVOID_CLICK_INTERCEPTION)
             
-            return self._handle_select_to_change_deputy(index_to_select)
+            return self._handle_select_to_change_deputy(deputy_id)
 
     def get_deputy_name(self) -> str:
         """
@@ -459,13 +456,14 @@ class DeputyWebDriver:
 
 def _scrape_deputies(driver: RemoteWebDriver) -> None:
     webdriver = DeputyWebDriver(driver)
-    deputies_names, _ = webdriver.get_deputies_names_from_dropdown()
+    deputies = webdriver.get_deputies_from_dropdown()
     deputies_collected_data  = set()
 
     # Do this for every deputy, since we know all the names
     # We know we should have data for every deputy    
-    while len(deputies_collected_data) < len(deputies_names):
-        webdriver._handle_select_to_change_deputy(len(deputies_collected_data))
+    while len(deputies_collected_data) < len(deputies):
+        _, deputy_id = deputies[len(deputies_collected_data)]
+        webdriver._handle_select_to_change_deputy(deputy_id)
         current_deputy_name = webdriver.get_deputy_name()
 
         # get all operational costs
