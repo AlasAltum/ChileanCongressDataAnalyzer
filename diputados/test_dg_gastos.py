@@ -482,23 +482,28 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
         self.assertEqual(scraper.current_year, 2026)
 
     def test_starts_previous_year_at_its_last_listed_month(self):
+        year_id = dg_gastos.YEAR_SELECTOR_CSS[1:]
+        month_id = dg_gastos.MONTH_SELECTOR_CSS[1:]
+        year_2025 = f'<select id="{year_id}"><option selected>2025</option><option>2026</option></select>'
         pathlib.Path(self.pages_dir.name, 'year_2025.html').write_text(PAGE.format(content=(
-            f'<select id="{dg_gastos.YEAR_SELECTOR_CSS[1:]}">'
-            '<option selected="selected">2025</option><option>2026</option></select>'
-            f'<select id="{dg_gastos.MONTH_SELECTOR_CSS[1:]}">'
-            '<option>febrero</option><option>octubre</option></select>')), encoding='utf-8')
+            year_2025
+            + f'<select id="{month_id}" onchange="setTimeout(() => location.href = \'oct_2025.html\', 750)">'
+            '<option>febrero</option><option>octubre</option></select>'
+            + table(('TELEFONÍA', '$200')))), encoding='utf-8')
+        pathlib.Path(self.pages_dir.name, 'oct_2025.html').write_text(PAGE.format(content=(
+            year_2025 + f'<select id="{month_id}"><option>febrero</option><option selected>octubre</option></select>'
+            + table(('TELEFONÍA', '$1000')))), encoding='utf-8')
         scraper = self.open_scraper_on(
-            f'<select id="{dg_gastos.YEAR_SELECTOR_CSS[1:]}"'
-            ' onchange="location.href = \'year_2025.html\'">'
-            '<option>2025</option><option selected="selected">2026</option></select>'
-            f'<select id="{dg_gastos.MONTH_SELECTOR_CSS[1:]}"><option>marzo</option></select>')
+            f'<select id="{year_id}" onchange="setTimeout(() => location.href = \'year_2025.html\', 750)">'
+            '<option>2025</option><option selected>2026</option></select>'
+            f'<select id="{month_id}"><option>marzo</option></select>')
         scraper._reset_dates_for_another_section()
 
-        self.assertTrue(scraper.set_one_month_backward())
+        self.assertTrue(scraper.set_one_month_backward(wait_for_refresh=True))
+        scraper.get_data_from_operational_costs_table()
 
-        dropdown = self.driver.find_element(By.CSS_SELECTOR, dg_gastos.MONTH_SELECTOR_CSS)
-        self.assertEqual(Select(dropdown).first_selected_option.text, 'octubre')
-        self.assertEqual((scraper.current_year, scraper.current_month_index), (2025, 10))
+        costs = dg_gastos.operational_costs
+        self.assertEqual(list(zip(costs['Anio'], costs['Mes'], costs['Montos'])), [(2025, 10, '$1000')])
 
     def test_does_not_look_up_month_after_year_exhaustion(self):
         scraper = self.open_scraper_on(
