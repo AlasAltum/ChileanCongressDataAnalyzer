@@ -73,6 +73,8 @@ MONTH_TEXT_TO_NUMBER = {
     'diciembre': 12,
 }
 WAITING_TIME = 2
+# Year changes post the whole form; camara.cl took ~45 s to answer one.
+POSTBACK_TIMEOUT = 120
 
 operational_costs = {
         'diputado': [],
@@ -121,6 +123,7 @@ class DeputyWebDriver:
     def __init__(self, _webdriver: RemoteWebDriver, logger_name='DeputyLogger'):
         self.driver : RemoteWebDriver = _webdriver
         self.webdriver_wait : WebDriverWait = WebDriverWait(_webdriver, WAITING_TIME)
+        self.postback_wait : WebDriverWait = WebDriverWait(_webdriver, POSTBACK_TIMEOUT)
         self.current_deputy = ''
         self.current_month_index = 12  # initializes in december
         self.current_year = 2021
@@ -216,8 +219,14 @@ class DeputyWebDriver:
         self.current_month_index = MONTH_TEXT_TO_NUMBER[month]
         self._log(f'Mes actual: {month}')
 
+    def _wait_for_postback(self, element_on_previous_page) -> None:
+        """Wait until the page holding the element is replaced and fully loaded."""
+        self.postback_wait.until(
+            lambda driver: EC.staleness_of(element_on_previous_page)(driver)
+            and driver.execute_script('return document.readyState') == 'complete'
+        )
 
-    def set_one_year_backward(self, *, wait_for_refresh=False):
+    def set_one_year_backward(self):
         """
         Set scroller of years one year in the past by moving the selector.
         """
@@ -231,12 +240,11 @@ class DeputyWebDriver:
             # if previous_year has available data:
             if previous_year in self.available_years:
                 dropdown_year_select.select_by_visible_text(str(previous_year))
-                if wait_for_refresh:
-                    self.webdriver_wait.until(EC.staleness_of(dropdown_year))
-                    self.webdriver_wait.until(
-                        lambda driver: driver.find_element(By.CSS_SELECTOR, YEAR_SELECTOR_CSS)
-                        .get_property('value') == str(previous_year)
-                    )
+                self._wait_for_postback(dropdown_year)
+                loaded_year = Select(self.webdriver_wait.until(_by_css_selector(YEAR_SELECTOR_CSS)))\
+                    .first_selected_option.text
+                if loaded_year != str(previous_year):
+                    raise ValueError(f'La página cargó el año {loaded_year}')
                 self.get_and_update_current_month()
                 self.current_year = previous_year
                 self._log(f'Se restó un año satisfactoriamente, año actual: {self.current_year}')
@@ -502,7 +510,7 @@ def _scrape_deputies(driver: RemoteWebDriver) -> None:
         while webdriver.there_is_more_data_to_scrap:
             webdriver.select_all_months_in_month_dropwdown()
             webdriver.get_data_from_external_consultancies()
-            webdriver.set_one_year_backward(wait_for_refresh=True)
+            webdriver.set_one_year_backward()
 
         webdriver._log('Se terminaron de obtener los datos de asesorías externas de '
                        f'{current_deputy_name}, pasando a Personal de apoyo...')
