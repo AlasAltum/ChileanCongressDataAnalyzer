@@ -10,6 +10,7 @@ from selenium.webdriver import Remote as RemoteWebDriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
 from selenium.common.exceptions import (StaleElementReferenceException,
+                                        TimeoutException,
                                         NoSuchWindowException,
                                         ElementClickInterceptedException)
 from selenium.webdriver.support import expected_conditions as EC
@@ -319,7 +320,9 @@ class DeputyWebDriver:
         try:
             dropdown_month = self.webdriver_wait.until(_by_css_selector(MONTH_SELECTOR_CSS))
             dropdown_month_select = Select(dropdown_month)
+            month = dropdown_month_select.options[0].text
             dropdown_month_select.select_by_index(0)
+            self.current_month_index = MONTH_TEXT_TO_NUMBER[month]
         except StaleElementReferenceException:
             self.select_all_months_in_month_dropwdown()
 
@@ -342,12 +345,14 @@ class DeputyWebDriver:
                   f'{self.current_year} no tiene datos. Saltando...')
 
             if available_data:
-                if not self.driver.find_elements(By.XPATH, TABLE_ROW_XPATH):
-                    return
                 xpath_prefix = '//table[@class="tabla"]/tbody/tr/td'
-                # This first time is to make sure the data was loaded and
-                # there were no changes in the DOM
-                doc_elements = self.webdriver_wait.until(_by_xpath_selector(xpath_prefix + '[1]'))
+                try:
+                    self.webdriver_wait.until(_by_xpath_selector(xpath_prefix + '[1]'))
+                except TimeoutException:
+                    if (self.driver.find_elements(By.XPATH, DEPUTY_COST_TABLE_XPATH)
+                            and not self.driver.find_elements(By.XPATH, TABLE_ROW_XPATH)):
+                        return
+                    raise
 
                 doc_elements = self.driver.find_elements(By.XPATH, xpath_prefix + '[1]')
                 folio_elements = self.driver.find_elements(By.XPATH, xpath_prefix + '[2]')

@@ -236,6 +236,21 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
         self.assertFalse(scraper.there_is_more_data_to_scrap)
         self.assertFalse(scraper.set_one_month_backward())
 
+    def test_reads_consultancies_when_rows_load_after_the_table(self):
+        scraper = self.open_scraper_on(table())
+        row = ('Ver', '12', '01/03/2021', 'Juan Pérez', 'Informe legislativo', '$822.400')
+        self.driver.execute_script("""
+            const cells = arguments[0];
+            setTimeout(() => {
+                const row = document.querySelector('table.tabla tbody').insertRow();
+                cells.forEach(text => { row.insertCell().textContent = text; });
+            }, 750);
+        """, row)
+
+        scraper.get_data_from_external_consultancies()
+
+        self.assertEqual(dg_gastos.external_consultancies['Asesor'], ['Juan Pérez'])
+
     def test_readers_leave_empty_months_empty(self):
         for content in (NO_DATA, table()):
             scraper = self.open_scraper_on(content)
@@ -257,6 +272,16 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
             with self.subTest(reader=read.__name__):
                 with self.assertRaises(TimeoutException):
                     read()
+
+    def test_annual_consultancy_timeout_identifies_all_months(self):
+        scraper = self.open_scraper_on(
+            f'<select id="{dg_gastos.MONTH_SELECTOR_CSS[1:]}">'
+            '<option>Todos</option><option selected>marzo</option></select>')
+
+        scraper.select_all_months_in_month_dropwdown()
+
+        with self.assertRaisesRegex(TimeoutException, 'Florcita Alarcón Rojas, Todos de 2021'):
+            scraper.get_data_from_external_consultancies()
 
     def test_readers_propagate_webdriver_errors(self):
         scraper = self.open_scraper_on(
