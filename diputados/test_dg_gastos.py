@@ -305,6 +305,25 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
 
         self.assertEqual(dg_gastos.external_consultancies['Asesor'], ['Juan Pérez'])
 
+    def test_consultancies_leave_live_empty_panel_empty(self):
+        fixture = pathlib.Path(__file__).with_name('fixtures') / 'empty_consultancies.html'
+        scraper = self.open_scraper_on(fixture.read_text(encoding='utf-8'))
+        scraper.get_and_update_current_year()
+        scraper.select_all_months_in_month_dropwdown()
+
+        scraper.get_data_from_external_consultancies()
+
+        self.assertFalse(any(dg_gastos.external_consultancies.values()))
+
+    def test_consultancies_raise_when_loaded_panel_does_not_show_results(self):
+        fixture = pathlib.Path(__file__).with_name('fixtures') / 'empty_consultancies.html'
+        content = fixture.read_text(encoding='utf-8').replace(
+            '<div id="body" class="table-responsive">', '<div id="body" class="table-responsive">Error')
+        scraper = self.open_scraper_on(content)
+
+        with self.assertRaises(TimeoutException):
+            scraper.get_data_from_external_consultancies()
+
     def test_readers_leave_empty_months_empty(self):
         for content in (NO_DATA, table()):
             scraper = self.open_scraper_on(content)

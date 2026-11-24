@@ -33,6 +33,11 @@ OPERATIONAL_COSTS_CSS = '#ContentPlaceHolder1_ContentPlaceHolder1_btGasop'
 NO_DATA_PARRAGRAPH_XPATH = '//div[@id="ContentPlaceHolder1_ContentPlaceHolder1_DetallePlaceHolder_nodata"]/p'
 TABLE_ROW_XPATH = '//table[@class="tabla"]/tbody/tr'
 DEPUTY_COST_TABLE_XPATH = '//table[@class="tabla"]/tbody'
+EMPTY_CONSULTANCIES_XPATH = (
+    '//*[@id="ajax-container"]//div[@id="body" and @class="table-responsive"'
+    ' and not(*) and not(normalize-space())]'
+    '[../div[@class="top-tabs-sesiones"]/h4[normalize-space()="Asesorías Externas"]]'
+)
 MONTHS = (
     'Todos', # This one appears only in some cases.
     'enero',
@@ -256,13 +261,15 @@ class DeputyWebDriver:
             return True
         return self.set_one_year_backward() and self._select_month(last=True)
 
-    def _fast_check_if_there_is_data_section(self) -> bool:
-        """Wait for the data table or the site's explicit no-data notice."""
+    def _fast_check_if_there_is_data_section(self, *, empty_panel_xpath=None) -> bool:
+        """Wait for the data table or a recognized no-data state."""
         def find_data_section(driver):
             if driver.find_elements(By.XPATH, DEPUTY_COST_TABLE_XPATH):
                 return 'table'
             notices = driver.find_elements(By.XPATH, NO_DATA_PARRAGRAPH_XPATH)
             if any('no han sido publicados' in notice.text for notice in notices):
+                return 'no_data'
+            if empty_panel_xpath and driver.find_elements(By.XPATH, empty_panel_xpath):
                 return 'no_data'
             return None
 
@@ -344,7 +351,9 @@ class DeputyWebDriver:
         Get the data from external consultancies of a deputy during a whole year
         """
         try:
-            available_data = self._fast_check_if_there_is_data_section()
+            available_data = self._fast_check_if_there_is_data_section(
+                empty_panel_xpath=EMPTY_CONSULTANCIES_XPATH,
+            )
             if available_data is False:
                 self._log(f'Mes {MONTHS[self.current_month_index]} del año '
                   f'{self.current_year} no tiene datos. Saltando...')
