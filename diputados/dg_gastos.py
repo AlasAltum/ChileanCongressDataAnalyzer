@@ -203,7 +203,7 @@ class DeputyWebDriver:
         self._log(f'Mes actual: {month}')
 
 
-    def set_one_year_backward(self):
+    def set_one_year_backward(self, *, wait_for_refresh=False):
         """
         Set scroller of years one year in the past by moving the selector.
         """
@@ -217,6 +217,12 @@ class DeputyWebDriver:
             # if previous_year has available data:
             if previous_year in self.available_years:
                 dropdown_year_select.select_by_visible_text(str(previous_year))
+                if wait_for_refresh:
+                    self.webdriver_wait.until(EC.staleness_of(dropdown_year))
+                    self.webdriver_wait.until(
+                        lambda driver: driver.find_element(By.CSS_SELECTOR, YEAR_SELECTOR_CSS)
+                        .get_property('value') == str(previous_year)
+                    )
                 self.get_and_update_current_month()
                 self.current_year = previous_year
                 self._log(f'Se restó un año satisfactoriamente, año actual: {self.current_year}')
@@ -493,7 +499,7 @@ def _scrape_deputies(driver: RemoteWebDriver) -> None:
         while webdriver.there_is_more_data_to_scrap:
             webdriver.select_all_months_in_month_dropwdown()
             webdriver.get_data_from_external_consultancies()
-            webdriver.set_one_year_backward()
+            webdriver.set_one_year_backward(wait_for_refresh=True)
 
         webdriver._log('Se terminaron de obtener los datos de asesorías externas de '
                        f'{current_deputy_name}, pasando a Personal de apoyo...')
