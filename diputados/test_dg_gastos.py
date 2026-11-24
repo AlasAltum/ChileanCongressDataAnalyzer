@@ -21,8 +21,6 @@ import dg_gastos
 from dg_gastos import DeputyWebDriver
 
 PAGE = '''<html><body>
-<a id="ContentPlaceHolder1_ContentPlaceHolder1_btnAsexterna" href="#"
-   onclick="document.title='asesorias'">Asesorías externas</a>
 {content}
 </body></html>'''
 NO_DATA = ('<div id="ContentPlaceHolder1_ContentPlaceHolder1_DetallePlaceHolder_nodata">'
@@ -106,10 +104,10 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
             for values in collected.values():
                 values.clear()
 
-    def open_scraper_on(self, content: str) -> DeputyWebDriver:
+    def open_scraper_on(self, content: str, query='prmId=1008') -> DeputyWebDriver:
         page = pathlib.Path(self.pages_dir.name, f'{self.id()}.html')
         page.write_text(PAGE.format(content=content), encoding='utf-8')
-        with mock.patch.object(dg_gastos, 'FIRST_DIPUTY_URL', page.as_uri()):
+        with mock.patch.object(dg_gastos, 'FIRST_DIPUTY_URL', f'{page.as_uri()}?{query}'):
             scraper = DeputyWebDriver(self.driver)
         scraper.current_deputy = 'Florcita Alarcón Rojas'
         scraper.current_year = 2021
@@ -135,7 +133,7 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
         destination.write_text('<title>Gastos operacionales</title>', encoding='utf-8')
         scraper = self.open_scraper_on(f'''
             <a id="ContentPlaceHolder1_ContentPlaceHolder1_btGasop"
-               href="{destination.name}#ficha-diputados">Gastos operacionales</a>
+               href="{destination.name}?prmId=1008#ficha-diputados">Gastos operacionales</a>
             <div id="ajax-container">
                 <div style="position: relative; top: -2rem; height: 4rem;">Panel de detalle</div>
             </div>
@@ -143,7 +141,8 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
 
         scraper.get_into_operational_costs_section()
 
-        self.assertEqual(self.driver.current_url, f'{destination.as_uri()}#ficha-diputados')
+        self.assertEqual(self.driver.current_url,
+                         f'{destination.as_uri()}?prmId=1008#ficha-diputados')
         self.assertEqual(self.driver.title, 'Gastos operacionales')
 
     def test_switches_deputies_without_rereading_roster(self):
@@ -200,19 +199,40 @@ class DeputyWebDriverLocatorsTest(unittest.TestCase):
 
         self.assertEqual(self.driver.title, '1186')
 
+    def test_opens_sections_for_page_deputy_when_links_lose_its_id(self):
+        # After a month or year postback camara.cl renders the section links
+        # with an unformatted prmId={0}; the page URL still names the deputy.
+        sections = (
+            ('btGasop', 'gastosoperacionales.html', DeputyWebDriver.get_into_operational_costs_section),
+            ('btnAsexterna', 'asesoriaexterna.html', DeputyWebDriver.get_into_external_consultancies),
+            ('btpeapo', 'personaldepoyo.html', DeputyWebDriver.get_into_supporting_staff),
+        )
+        links = ''.join(f'<a id="ContentPlaceHolder1_ContentPlaceHolder1_{link_id}" '
+                        f'href="{name}?prmId={{0}}#ficha-diputados">{name}</a>'
+                        for link_id, name, _ in sections)
+        for _, name, open_section in sections:
+            with self.subTest(section=name):
+                destination = pathlib.Path(self.pages_dir.name, name)
+                destination.write_text(f'<title>{name}</title>', encoding='utf-8')
+                scraper = self.open_scraper_on(links, query='prmID=1009')
+
+                open_section(scraper)
+
+                self.assertEqual(self.driver.current_url,
+                                 f'{destination.as_uri()}?prmId=1009#ficha-diputados')
+                self.assertEqual(self.driver.title, name)
+
     def test_detects_month_without_published_data(self):
         scraper = self.open_scraper_on(NO_DATA)
 
         self.assertIs(scraper._fast_check_if_there_is_data_section(), False)
 
-    def test_opens_and_reads_external_consultancies(self):
+    def test_reads_external_consultancies_table(self):
         scraper = self.open_scraper_on(
             table(('Ver', '12', '01/03/2021', 'Juan Pérez', 'Informe legislativo', '$822.400')))
 
-        scraper.get_into_external_consultancies()
         scraper.get_data_from_external_consultancies()
 
-        self.assertEqual(self.driver.title, 'asesorias')
         self.assertEqual(dg_gastos.external_consultancies['Asesor'], ['Juan Pérez'])
         self.assertEqual(dg_gastos.external_consultancies['Monto'], ['$822.400'])
 

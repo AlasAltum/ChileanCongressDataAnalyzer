@@ -6,6 +6,7 @@ import logging
 import re
 import pandas as pd
 import time
+from urllib.parse import parse_qsl, urlencode, urlsplit
 from selenium.webdriver import Remote as RemoteWebDriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
@@ -30,6 +31,8 @@ MAX_MONTH_SELECTION_ATTEMPTS = 3
 DEPUTIES_DROPDOWN_ID = 'ContentPlaceHolder1_ContentPlaceHolder1_ddlDiputados'
 CURRENT_YEAR_CSS = 'ContentPlaceHolder1_ContentPlaceHolder1_DetallePlaceHolder_ddlAno'
 OPERATIONAL_COSTS_CSS = '#ContentPlaceHolder1_ContentPlaceHolder1_btGasop'
+EXTERNAL_CONSULTANCIES_CSS = '#ContentPlaceHolder1_ContentPlaceHolder1_btnAsexterna'
+SUPPORT_STAFF_CSS = '#ContentPlaceHolder1_ContentPlaceHolder1_btpeapo'
 NO_DATA_PARRAGRAPH_XPATH = '//div[@id="ContentPlaceHolder1_ContentPlaceHolder1_DetallePlaceHolder_nodata"]/p'
 TABLE_ROW_XPATH = '//table[@class="tabla"]/tbody/tr'
 DEPUTY_COST_TABLE_XPATH = '//table[@class="tabla"]/tbody'
@@ -168,14 +171,24 @@ class DeputyWebDriver:
         self._log(f'Nombre del diputado cuyos datos se extraen: {self.current_deputy}')
         return name_without_prefix
 
-    def get_into_operational_costs_section(self):
+    def _open_deputy_section(self, link_css: str) -> None:
         """
-        Open the operational-costs URL without relying on the page layout.
+        Open a section link for the deputy shown on the page, without relying
+        on the page layout. After a month or year postback camara.cl renders
+        these links with a literal prmId={0}, so the deputy id comes from the
+        page URL instead of the link.
         """
         link = self.webdriver_wait.until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, OPERATIONAL_COSTS_CSS))
+            EC.presence_of_element_located((By.CSS_SELECTOR, link_css))
         )
-        self.driver.get(link.get_property('href'))
+        page_query = parse_qsl(urlsplit(self.driver.current_url).query)
+        deputy_id = {key.lower(): value for key, value in page_query}['prmid']
+        section_url = urlsplit(link.get_property('href'))._replace(
+            query=urlencode({'prmId': deputy_id}))
+        self.driver.get(section_url.geturl())
+
+    def get_into_operational_costs_section(self):
+        self._open_deputy_section(OPERATIONAL_COSTS_CSS)
 
     def get_and_update_current_year(self):
         """
@@ -332,11 +345,7 @@ class DeputyWebDriver:
             self.select_all_months_in_month_dropwdown()
 
     def get_into_external_consultancies(self) -> None:
-        """
-        
-        """
-        external_consultancies_element = self.driver.find_element(By.ID, 'ContentPlaceHolder1_ContentPlaceHolder1_btnAsexterna')
-        external_consultancies_element.click()
+        self._open_deputy_section(EXTERNAL_CONSULTANCIES_CSS)
 
 
     def get_data_from_external_consultancies(self) -> None:
@@ -393,9 +402,7 @@ class DeputyWebDriver:
 
     def get_into_supporting_staff(self) -> bool:
         """Open the supporting staff section for the current deputy."""
-        LIST_CSS = '#ContentPlaceHolder1_ContentPlaceHolder1_btpeapo'
-        supporting_staff_element = self.webdriver_wait.until(_by_css_selector(LIST_CSS))
-        supporting_staff_element.click()
+        self._open_deputy_section(SUPPORT_STAFF_CSS)
         return True
 
 
