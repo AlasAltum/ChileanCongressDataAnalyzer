@@ -6,29 +6,30 @@ or set it from a console.
 """
 
 import os
-import selenium
+from selenium import webdriver
 from selenium.webdriver import Remote as RemoteWebDriver
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 
+DEFAULT_DRIVER = 'firefox'
+SUPPORTED_DRIVERS = ('chrome', 'firefox')
+
 
 def get_driver() -> RemoteWebDriver:
-    key = 'DRIVER'
-    value = os.getenv(key) # Recover driver from environment variables
-    driver = None
+    """
+    Start the browser named by the DRIVER environment variable
+    ('chrome' or 'firefox'), defaulting to Firefox when it is unset.
+    """
+    name = (os.getenv('DRIVER') or DEFAULT_DRIVER).strip().lower()
 
-    if value == None:
-        # set mozilla as default driver 
-        DRIVER = 'mozilla'    
+    if name == 'firefox':
+        return webdriver.Firefox()
+    if name == 'chrome':
+        return webdriver.Chrome()
 
-        if DRIVER == 'mozilla':
-            # Es posible que tengan que indicar un path: 
-            driver = selenium.webdriver.Firefox()
-
-        elif DRIVER == 'chrome':
-            driver = selenium.webdriver.Chrome()
-
-    return driver
+    raise ValueError(
+        f"Unsupported DRIVER {name!r}; expected one of: {', '.join(SUPPORTED_DRIVERS)}"
+    )
 
 
 def _by_id(id_of_html_element: str):
